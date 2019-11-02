@@ -14,6 +14,8 @@
 //Null files?
 //Memory stick check - partially written, but remmed out as seems to get stuck with something in the serial buffer?
 
+#include <Arduino.h>
+
 #include <BlockDriver.h>
 #include <FreeStack.h>
 #include <MinimumSerial.h>
@@ -34,6 +36,19 @@
 #include <OneWire.h>  //control devices (from Dallas Semiconductor) that use the One Wire protocol
 #include <DallasTemperature.h>
 #include <EEPROM.h>
+
+// Function prototypes
+int16_t BootupConfigure();
+void Calibrate();
+void CheckStorageDevicePresence();
+String ConvertTimeDate(int TimeDate[]);
+int32_t Dec2Ascii(char *pSrc, int32_t value);
+void flash_data(char *pstring, boolean Print);
+void Loadimage2ram();
+void Notepad(void);
+void ReadTimeDate(int TimeDate[]);
+void RTC_init();
+void SetTimeDate(int d, int mo, int y, int h, int mi, int s);
 
 // Setup a oneWire instance to communicate with any OneWire devices 
 // (not just Maxim/Dallas temperature ICs)
@@ -111,7 +126,6 @@ uint8_t DallasAddress[8];
 int32_t EnergyDensity, NewEnergyDensity, NED;              //value stored in EEPROM from callibration in mW/mm^2
 int eeAddress = 0;
 bool FirstPass = false, LidOpen = false; 
-
 
 void setup(void)
 {
