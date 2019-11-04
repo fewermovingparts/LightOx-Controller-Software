@@ -251,6 +251,63 @@ void setup(void) {
   Serial.println("Setup complete.....");
 }
 
+const uint32_t kColourPrimary = 0x2A5673 + 0x001000;  // dark greeny
+
+enum DisplayScreen {
+  kDisplayScreenHome = 0,
+  kDisplayScreenNewExp,
+  kDisplayScreenBrowseExperiments
+};
+bool screenJustSelected = true;
+DisplayScreen currentScreen = kDisplayScreenHome;
+const uint8_t kFont = 26;
+
+static void setNextScreen(DisplayScreen screen) {
+  screenJustSelected = true;
+  currentScreen = screen;
+}
+
+void homeScreen(uint8_t selectedTag) {
+  if (screenJustSelected) {
+    Screen = 0;
+    Loadimage2ram();
+    screenJustSelected = false;
+  }
+
+  // Display the logo
+  FTImpl.Cmd_DLStart();
+
+  FTImpl.Begin(FT_BITMAPS);      // Start a new graphics primitive
+  FTImpl.Vertex2ii(0, 0, 0, 0);  // Draw primitive
+  FTImpl.BitmapHandle(0);
+  FTImpl.BitmapSource(0);
+  FTImpl.BitmapLayout(FT_RGB565, 480L * 2, 272);
+  FTImpl.BitmapSize(FT_NEAREST, FT_BORDER, FT_BORDER, 480, 272);
+
+  FTImpl.Cmd_FGColor(kColourPrimary);
+  FTImpl.TagMask(1);
+
+  const int16_t buttonWidth = 120;
+  const uint8_t kNewExperimentTag = 11;
+  FTImpl.Tag(kNewExperimentTag);
+  uint16_t options = kNewExperimentTag == selectedTag ? FT_OPT_FLAT : 0;
+  FTImpl.Cmd_Button(FT_DISPLAY_HSIZE / 4 - buttonWidth / 2, 200, buttonWidth,
+                    30, kFont, options, "New experiment");
+
+  const uint8_t kPrevExperimentTag = 12;
+  FTImpl.Tag(kPrevExperimentTag);
+  options = kPrevExperimentTag == selectedTag ? FT_OPT_FLAT : 0;
+  FTImpl.Cmd_Button(FT_DISPLAY_HSIZE * 3 / 4 - buttonWidth / 2, 200, buttonWidth,
+                    30, kFont, options, "Rerun experiment");
+
+  if (kNewExperimentTag == selectedTag) {
+    setNextScreen(kDisplayScreenNewExp);
+    Screen = 3; // TODO remove once new exp screen updated
+  } else if (kPrevExperimentTag == selectedTag) {
+    setNextScreen(kDisplayScreenBrowseExperiments);
+  }
+}
+
 void loop() {
   // newscreen
   sTagXY sTagxy;
@@ -275,339 +332,361 @@ void loop() {
   char checkfileexist[80];
 
   Screen = 0;
-  Loadimage2ram();
+  setNextScreen(kDisplayScreenHome);
 
   while (1) {
-    FTImpl
-        .Cmd_DLStart();  // start new display list - ends with
-                         // DL_swap///////////////////////////////////////////////////////////////////////////////////////
-
-    FTImpl.Begin(FT_BITMAPS);  // Start a new graphics primitive
-    // FTImpl.ClearColorRGB(64,64,64);
-    // FTImpl.Clear(1,1,1);
-    FTImpl.Vertex2ii(0, 0, 0, 0);  // Draw primitive
-    FTImpl.BitmapHandle(0);
-    FTImpl.BitmapSource(0);
-    FTImpl.BitmapLayout(FT_RGB565, 480L * 2, 272);
-    FTImpl.BitmapSize(FT_NEAREST, FT_BORDER, FT_BORDER, 480, 272);
-
     FTImpl.TagMask(1);
     FTImpl.GetTagXY(sTagxy);
     tagval = sTagxy.tag;
     FTImpl.ClearColorRGB(64, 64, 64);  // text colour?
 
-    if (Screen == 0) {
-      FTImpl.ColorA(5);
-      FTImpl.Tag(11);
-      FTImpl.Cmd_Button(161, 47, 120, 120, 26, 0, " ");
-      FTImpl.Tag(12);
-      FTImpl.Cmd_Button(288, 187, 60, 60, 26, 0, " ");
-      FTImpl.Tag(22);
-      FTImpl.Cmd_Button(110, 186, 18, 18, 26, 0, " ");
-      FTImpl.Tag(23);
-      FTImpl.Cmd_Button(310, 3, 18, 18, 26, 0, " ");
-    }
-
-    if (Screen !=
-        0)  // On all other screen bottom left button is
-            // quit///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    {
-      // assign tag value 13 to the quit button
-      tagoption = 0;  // no touch is default 3d effect and touch is flat effect
-      if (13 == tagval) tagoption = FT_OPT_FLAT;
-      FTImpl.Tag(13);
-      FTImpl.Cmd_Button(63 - 47, 241 - 19, 94, 38, 26, tagoption, "Quit");
-    }
-
-    if (Screen ==
-        1)  // Options///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    {
-      tagoption = 0;  // no touch is default 3d effect and touch is flat effect
-      if (15 == tagval) tagoption = FT_OPT_FLAT;
-      FTImpl.Tag(15);
-      FTImpl.Cmd_Button(17, 54, 431, 33, 26, tagoption, "Set date and time");
-
-      tagoption = 0;  // no touch is default 3d effect and touch is flat effect
-      if (16 == tagval) tagoption = FT_OPT_FLAT;
-      FTImpl.Tag(16);
-      FTImpl.Cmd_Button(17, 10, 431, 33, 26, tagoption,
-                        "Copy logs to flash drive");
-
-      tagoption = 0;  // no touch is default 3d effect and touch is flat effect
-      if (18 == tagval) tagoption = FT_OPT_FLAT;
-      FTImpl.Tag(18);
-      FTImpl.Cmd_Button(17, 98, 431, 33, 26, tagoption,
-                        "Settings (Administrator password required)");
-
-      tagoption = 0;  // no touch is default 3d effect and touch is flat effect
-      if (17 == tagval) tagoption = FT_OPT_FLAT;
-      FTImpl.Tag(17);
-      FTImpl.Cmd_Button(17, 142, 431, 33, 26, tagoption, "Product information");
-    }
-
-    if (Screen ==
-        2)  // Date///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    {
-      tagoption = 0;  // no touch is default 3d effect and touch is flat effect
-      if (14 == tagval) tagoption = FT_OPT_FLAT;
-      FTImpl.Tag(14);
-      FTImpl.Cmd_Button(423 - 47, 241 - 19, 94, 38, 26, tagoption, "Save");
-      if (!DateRead) {
-        ReadTimeDate(TimeAndDate);
-        DateRead = true;
-      }
-      if ((25 <= tagval) && (tagval <= 30)) {
-        datetag = tagval;  // tagoption = FT_OPT_FLAT;
-      }
-      FTImpl.Tag(25);
-      TmpDate[0] = char(48 + int(TimeAndDate[4] / 10));
-      TmpDate[1] = char(48 + TimeAndDate[4] - 10 * int(TimeAndDate[4] / 10));
-      TmpDate[2] = '\0';
-      FTImpl.Cmd_Button(40, 40, 60, 38, 30, (datetag == 25) ? FT_OPT_FLAT : 0,
-                        TmpDate);  // Day
-      FTImpl.Tag(26);
-      TmpDate[0] = char(48 + int(TimeAndDate[5] / 10));
-      TmpDate[1] = char(48 + TimeAndDate[5] - 10 * int(TimeAndDate[5] / 10));
-      FTImpl.Cmd_Button(110, 40, 60, 38, 30, (datetag == 26) ? FT_OPT_FLAT : 0,
-                        TmpDate);  // Month
-      FTImpl.Tag(27);
-      TmpDate[0] = char(48 + int(TimeAndDate[6] / 10));
-      TmpDate[1] = char(48 + TimeAndDate[6] - 10 * int(TimeAndDate[6] / 10));
-      FTImpl.Cmd_Button(180, 40, 60, 38, 30, (datetag == 27) ? FT_OPT_FLAT : 0,
-                        TmpDate);  // Year
-      FTImpl.Tag(28);
-      TmpDate[0] = char(48 + int(TimeAndDate[2] / 10));
-      TmpDate[1] = char(48 + TimeAndDate[2] - 10 * int(TimeAndDate[2] / 10));
-      FTImpl.Cmd_Button(250, 40, 60, 38, 30, (datetag == 28) ? FT_OPT_FLAT : 0,
-                        TmpDate);  // Hour
-      FTImpl.Tag(29);
-      TmpDate[0] = char(48 + int(TimeAndDate[1] / 10));
-      TmpDate[1] = char(48 + TimeAndDate[1] - 10 * int(TimeAndDate[1] / 10));
-      FTImpl.Cmd_Button(320, 40, 60, 38, 30, (datetag == 29) ? FT_OPT_FLAT : 0,
-                        TmpDate);  // Minute
-      FTImpl.Tag(30);
-      TmpDate[0] = char(48 + int(TimeAndDate[0] / 10));
-      TmpDate[1] = char(48 + TimeAndDate[0] - 10 * int(TimeAndDate[0] / 10));
-      FTImpl.Cmd_Button(390, 40, 60, 38, 30, (datetag == 30) ? FT_OPT_FLAT : 0,
-                        TmpDate);  // Second
-      // Up/down buttons
-      tagoption = 0;  // no touch is default 3d effect and touch is flat effect
-      if (31 == tagval) tagoption = FT_OPT_FLAT;
-      FTImpl.Tag(31);
-      FTImpl.Cmd_Button(185, 120, 60, 38, 31, tagoption, "^");
-      tagoption = 0;  // no touch is default 3d effect and touch is flat effect
-      if (32 == tagval) tagoption = FT_OPT_FLAT;
-      FTImpl.Tag(32);
-      FTImpl.Cmd_Button(255, 120, 60, 38, 30, tagoption, "v");
-      // FTImpl.TagMask(0);
-      // FTImpl.ColorRGB(0xff,0xff,0xff);
-      // FTImpl.Cmd_Text(60, 20, 26, FT_OPT_CENTER, "Duration");
-      FTImpl.Cmd_Text(250, 25, 16, FT_OPT_CENTER,
-                      "Day    Month     Year     Hour   Minute  Second");
-
-      if (tagval == 31) {
-        TimeDigit = datetag - 25;
-        TimeAndDate[TimePointer[TimeDigit]] += 1;
-        if (TimeAndDate[TimePointer[TimeDigit]] > TimeMax[TimeDigit])
-          TimeAndDate[TimePointer[TimeDigit]] = TimeMin[TimeDigit];
-        delay(200);
-      }
-
-      if (tagval == 32) {
-        TimeDigit = datetag - 25;
-        TimeAndDate[TimePointer[TimeDigit]] -= 1;
-        if (TimeAndDate[TimePointer[TimeDigit]] < TimeMin[TimeDigit])
-          TimeAndDate[TimePointer[TimeDigit]] = TimeMax[TimeDigit];
-        delay(200);
-      }
-    }
-
-    if (Screen ==
-        4)  // Time Intensity
-            // Energy///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    {
-      // assign tag value 14 to the run button
-      tagoption = 0;  // no touch is default 3d effect and touch is flat effect
-      if (14 == tagval) tagoption = FT_OPT_FLAT;
-      FTImpl.Tag(14);
-      FTImpl.Cmd_Button(423 - 47, 241 - 19, 94, 38, 26, tagoption, "Run");
-
-      // Slider definition and operation
-      /* Set the tracker for 3 sliders */
-      FTImpl.Cmd_Track(40, 40, 180, 8, 19);   // duration in minutes
-      FTImpl.Cmd_Track(260, 40, 180, 8, 20);  // duration in seconds
-      FTImpl.Cmd_Track(40, 100, 400, 8, 21);  // intensity %
-
-      tagval = 0;
-      TrackRegisterVal = FTImpl.Read32(REG_TRACKER);
-      tagval = TrackRegisterVal & 0xff;
-      if (0 != tagval) {
-        if (19 == tagval) {
-          durationM = TrackRegisterVal >> 16;  // value is 0 - 65535
-        }
-        if (20 == tagval) {
-          durationS = TrackRegisterVal >> 16;  // value is 0 - 65535
-        }
-        if (21 == tagval) {
-          NewIntensity = TrackRegisterVal >> 16;  // value is 0 - 65535
-        }
-      }
-
-      tmpduration = (int32_t)durationM * 60 * 60 / 65535;
-      tmpduration +=
-          (int32_t)durationS * 59 / 65535;  // value is 0 - 3659 seconds
-      Time = tmpduration;
-
-      Intensity = (int32_t)NewIntensity * 100 / 65535;  // value is 0 - 100%
-
-      Energy = (float)Time * (float)EnergyDensity / 1000.0 * (float)Intensity /
-               100.0;
-
-      /* Draw slider with 3d effect */
-      FTImpl.ColorRGB(255, 32, 32);
-      // FTImpl.Cmd_FGColor(0x00a000);
-      FTImpl.Cmd_BGColor(0x000000);
-      FTImpl.Tag(19);
-      FTImpl.Cmd_Slider(40, 40, 180, 20, 0, durationM, 65535);
-      FTImpl.Tag(20);
-      FTImpl.Cmd_Slider(260, 40, 180, 20, 0, durationS, 65535);
-      FTImpl.Tag(21);
-      FTImpl.Cmd_Slider(40, 100, 400, 20, 0, NewIntensity, 65535);
-
-      FTImpl.TagMask(0);
-      FTImpl.ColorRGB(0xff, 0xff, 0xff);
-      FTImpl.Cmd_Text(60, 20, 26, FT_OPT_CENTER, "Duration");
-      strduration[0] = '\0';
-      Dec2Ascii(strduration, tmpduration);
-      strcat(strduration, " seconds");
-      FTImpl.Cmd_Text(200, 20, 26, FT_OPT_CENTER, strduration);
-      FTImpl.Cmd_Text(60, 80, 26, FT_OPT_CENTER, "Intensity");
-      // strintensity[0] = '\0';
-      // Dec2Ascii(strintensity,tmpintensity);
-      // strcat(strintensity,"%");
-      sprintf(OutputValue, "%03i", Intensity);
-      OutputValue[3] = '%';
-      OutputValue[4] = '\0';
-      FTImpl.Cmd_Text(200, 80, 26, FT_OPT_CENTER, OutputValue);
-      strEnergy[0] = '\0';
-      Dec2Ascii(strEnergy, Energy);
-      FTImpl.Cmd_Text(240, 160, 28, FT_OPT_CENTER, "Energy (mW/cm2)");
-      FTImpl.Cmd_Text(240, 190, 28, FT_OPT_CENTER, strEnergy);
-      delay(10);
-    }
-
-    if (Screen ==
-        5)  // Current & power
-            // density///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    {
-      // assign tag value 14 to the save button
-      tagoption = 0;  // no touch is default 3d effect and touch is flat effect
-      if (14 == tagval) tagoption = FT_OPT_FLAT;
-      FTImpl.Tag(14);
-      FTImpl.Cmd_Button(423 - 47, 241 - 19, 94, 38, 26, tagoption, "Save");
-
-      // Slider definition and operation
-      /* Set the tracker for 2 sliders */
-      FTImpl.Cmd_Track(40, 100, 400, 8, 19);
-      FTImpl.Cmd_Track(40, 200, 400, 8, 20);
-
-      tagval = 0;
-      TrackRegisterVal = FTImpl.Read32(REG_TRACKER);
-      tagval = TrackRegisterVal & 0xff;
-      if (0 != tagval) {
-        if (19 == tagval) {
-          NewCurrent = TrackRegisterVal >> 16;  // Value is 0 - 65535
-        }
-        if (20 == tagval) {
-          NewEnergyDensity = TrackRegisterVal >> 16;  // Value is 0 - 65535
-        }
-      }
-
-      // Float = (float)NewCurrent*100/65535;
-      tmpNewCurrent =
-          (float)NewCurrent * 100 / 65535 + 0.5;  // value is 0 - 100%
-      Float = (float)NewEnergyDensity * 300 / 65535 +
-              100;  // Value is 100 - 400 uW/mm2
-      tmpNewEnergyDensity = Float;
-
-      /* Draw slider with 3d effect */
-      FTImpl.ColorRGB(0, 255, 0);
-      if (NC != NewCurrent) FTImpl.ColorRGB(255, 0, 0);
-      // FTImpl.Cmd_FGColor(0x00a000);
-      FTImpl.Cmd_BGColor(0x000000);
-      FTImpl.Tag(19);
-      FTImpl.Cmd_Slider(40, 40, 400, 20, 0, NewCurrent, 65535);
-      FTImpl.ColorRGB(0, 255, 0);
-      if (NED != NewEnergyDensity) FTImpl.ColorRGB(255, 0, 0);
-      FTImpl.Tag(20);
-      FTImpl.Cmd_Slider(40, 100, 400, 20, 0, NewEnergyDensity, 65535);
-
-      FTImpl.TagMask(0);
-      FTImpl.ColorRGB(0xff, 0xff, 0xff);
-      FTImpl.Cmd_Text(60, 20, 26, FT_OPT_CENTER, "Current");
-      // strNewCurrent[0] = '\0';
-      // Dec2Ascii(strNewCurrent,tmpNewCurrent);
-      // strcat(strNewCurrent,"%");
-      sprintf(OutputValue, "%03i", tmpNewCurrent);
-      OutputValue[3] = '%';
-      OutputValue[4] = '\0';
-      // FTImpl.Cmd_Text(200, 20, 26, FT_OPT_CENTER, strNewCurrent);
-      FTImpl.Cmd_Text(200, 20, 26, FT_OPT_CENTER, OutputValue);
-      FTImpl.Cmd_Text(60, 80, 26, FT_OPT_CENTER, "Energy Density");
-      strNewEnergyDensity[0] = '\0';
-      Dec2Ascii(strNewEnergyDensity, tmpNewEnergyDensity);
-      strcat(strNewEnergyDensity, "uW/mm2");
-      FTImpl.Cmd_Text(200, 80, 26, FT_OPT_CENTER, strNewEnergyDensity);
-      // FTImpl.DLEnd();
-      // FTImpl.Finish();
-      delay(10);
-    }
-
-    if (Screen ==
-        6)  // Run
-            // ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    {
-      FTImpl.Display();  // added as first go at getting screen 6 to work
-      FTImpl.Cmd_Swap();
-      FTImpl.Finish();
-      Serial.println(SetCurrent);
-      ReadTimeDate(TimeAndDate);
-      Serial.println(ConvertTimeDate(TimeAndDate));
-
-      do {
-        LogRef++;  // increment logfile count and look for next free file
-        LogFile[11] = char(48 + int(LogRef / 100));
-        LogFile[12] = char(48 + int((LogRef - int(LogRef / 100) * 100) / 10));
-        LogFile[13] = char(48 + int(LogRef - int(LogRef / 10) * 10));
-        Serial.println(LogFile);
-      } while (sd.exists(LogFile));
-
-      if ((LogFile2 = sd.open(LogFile, FILE_WRITE)) ==
-          NULL) {  // Open and ensure file created o.k.
-        Serial.print(F("File error"));
-      }
-      LogFile2.println("Deliberately left blank");  // Sometimes lose first
-                                                    // line, so make it a dummy.
-      LogFile2.print("Test ID: ");  // Record project data
-      LogFile2.println(ProjectString);
-      LogFile2.print("Duration (s): ");
-      LogFile2.print(Time);
-      LogFile2.print(", ");
-      LogFile2.print("Selected Intensity (%): ");
-      LogFile2.print(Intensity);
-      LogFile2.print(", ");
-      LogFile2.print("Selected Current (%): ");
-      LogFile2.println(Current);
-      LogFile2.print("Calculation power density (uW/mm2): ");
-      LogFile2.println(EnergyDensity);
-      LogFile2.print("Energy applied (mW/cm2): ");
-      LogFile2.println(Energy);
-      LogFile2.print("Start Date/Time: ");
-      LogFile2.println(ConvertTimeDate(TimeAndDate));
-      LogFile2.println("Time (s), UV (relative), Temperature (Deg C)");
-
-      if (digitalRead(LID))  // Make sure lid is closed before start
+    if (kDisplayScreenHome == currentScreen) {
+      homeScreen(tagval);
+      tagval = 0; // TODO remove, avoids below code detecting a press
+    } else {
+      if (Screen !=
+          0)  // On all other screen bottom left button is
+              // quit///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
       {
+        // assign tag value 13 to the quit button
+        tagoption =
+            0;  // no touch is default 3d effect and touch is flat effect
+        if (13 == tagval) tagoption = FT_OPT_FLAT;
+        FTImpl.Tag(13);
+        FTImpl.Cmd_Button(63 - 47, 241 - 19, 94, 38, 26, tagoption, "Quit");
+      }
+
+      if (Screen ==
+          1)  // Options///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+      {
+        tagoption =
+            0;  // no touch is default 3d effect and touch is flat effect
+        if (15 == tagval) tagoption = FT_OPT_FLAT;
+        FTImpl.Tag(15);
+        FTImpl.Cmd_Button(17, 54, 431, 33, 26, tagoption, "Set date and time");
+
+        tagoption =
+            0;  // no touch is default 3d effect and touch is flat effect
+        if (16 == tagval) tagoption = FT_OPT_FLAT;
+        FTImpl.Tag(16);
+        FTImpl.Cmd_Button(17, 10, 431, 33, 26, tagoption,
+                          "Copy logs to flash drive");
+
+        tagoption =
+            0;  // no touch is default 3d effect and touch is flat effect
+        if (18 == tagval) tagoption = FT_OPT_FLAT;
+        FTImpl.Tag(18);
+        FTImpl.Cmd_Button(17, 98, 431, 33, 26, tagoption,
+                          "Settings (Administrator password required)");
+
+        tagoption =
+            0;  // no touch is default 3d effect and touch is flat effect
+        if (17 == tagval) tagoption = FT_OPT_FLAT;
+        FTImpl.Tag(17);
+        FTImpl.Cmd_Button(17, 142, 431, 33, 26, tagoption,
+                          "Product information");
+      }
+
+      if (Screen ==
+          2)  // Date///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+      {
+        tagoption =
+            0;  // no touch is default 3d effect and touch is flat effect
+        if (14 == tagval) tagoption = FT_OPT_FLAT;
+        FTImpl.Tag(14);
+        FTImpl.Cmd_Button(423 - 47, 241 - 19, 94, 38, 26, tagoption, "Save");
+        if (!DateRead) {
+          ReadTimeDate(TimeAndDate);
+          DateRead = true;
+        }
+        if ((25 <= tagval) && (tagval <= 30)) {
+          datetag = tagval;  // tagoption = FT_OPT_FLAT;
+        }
+        FTImpl.Tag(25);
+        TmpDate[0] = char(48 + int(TimeAndDate[4] / 10));
+        TmpDate[1] = char(48 + TimeAndDate[4] - 10 * int(TimeAndDate[4] / 10));
+        TmpDate[2] = '\0';
+        FTImpl.Cmd_Button(40, 40, 60, 38, 30, (datetag == 25) ? FT_OPT_FLAT : 0,
+                          TmpDate);  // Day
+        FTImpl.Tag(26);
+        TmpDate[0] = char(48 + int(TimeAndDate[5] / 10));
+        TmpDate[1] = char(48 + TimeAndDate[5] - 10 * int(TimeAndDate[5] / 10));
+        FTImpl.Cmd_Button(110, 40, 60, 38, 30,
+                          (datetag == 26) ? FT_OPT_FLAT : 0,
+                          TmpDate);  // Month
+        FTImpl.Tag(27);
+        TmpDate[0] = char(48 + int(TimeAndDate[6] / 10));
+        TmpDate[1] = char(48 + TimeAndDate[6] - 10 * int(TimeAndDate[6] / 10));
+        FTImpl.Cmd_Button(180, 40, 60, 38, 30,
+                          (datetag == 27) ? FT_OPT_FLAT : 0,
+                          TmpDate);  // Year
+        FTImpl.Tag(28);
+        TmpDate[0] = char(48 + int(TimeAndDate[2] / 10));
+        TmpDate[1] = char(48 + TimeAndDate[2] - 10 * int(TimeAndDate[2] / 10));
+        FTImpl.Cmd_Button(250, 40, 60, 38, 30,
+                          (datetag == 28) ? FT_OPT_FLAT : 0,
+                          TmpDate);  // Hour
+        FTImpl.Tag(29);
+        TmpDate[0] = char(48 + int(TimeAndDate[1] / 10));
+        TmpDate[1] = char(48 + TimeAndDate[1] - 10 * int(TimeAndDate[1] / 10));
+        FTImpl.Cmd_Button(320, 40, 60, 38, 30,
+                          (datetag == 29) ? FT_OPT_FLAT : 0,
+                          TmpDate);  // Minute
+        FTImpl.Tag(30);
+        TmpDate[0] = char(48 + int(TimeAndDate[0] / 10));
+        TmpDate[1] = char(48 + TimeAndDate[0] - 10 * int(TimeAndDate[0] / 10));
+        FTImpl.Cmd_Button(390, 40, 60, 38, 30,
+                          (datetag == 30) ? FT_OPT_FLAT : 0,
+                          TmpDate);  // Second
+        // Up/down buttons
+        tagoption =
+            0;  // no touch is default 3d effect and touch is flat effect
+        if (31 == tagval) tagoption = FT_OPT_FLAT;
+        FTImpl.Tag(31);
+        FTImpl.Cmd_Button(185, 120, 60, 38, 31, tagoption, "^");
+        tagoption =
+            0;  // no touch is default 3d effect and touch is flat effect
+        if (32 == tagval) tagoption = FT_OPT_FLAT;
+        FTImpl.Tag(32);
+        FTImpl.Cmd_Button(255, 120, 60, 38, 30, tagoption, "v");
+        // FTImpl.TagMask(0);
+        // FTImpl.ColorRGB(0xff,0xff,0xff);
+        // FTImpl.Cmd_Text(60, 20, 26, FT_OPT_CENTER, "Duration");
+        FTImpl.Cmd_Text(250, 25, 16, FT_OPT_CENTER,
+                        "Day    Month     Year     Hour   Minute  Second");
+
+        if (tagval == 31) {
+          TimeDigit = datetag - 25;
+          TimeAndDate[TimePointer[TimeDigit]] += 1;
+          if (TimeAndDate[TimePointer[TimeDigit]] > TimeMax[TimeDigit])
+            TimeAndDate[TimePointer[TimeDigit]] = TimeMin[TimeDigit];
+          delay(200);
+        }
+
+        if (tagval == 32) {
+          TimeDigit = datetag - 25;
+          TimeAndDate[TimePointer[TimeDigit]] -= 1;
+          if (TimeAndDate[TimePointer[TimeDigit]] < TimeMin[TimeDigit])
+            TimeAndDate[TimePointer[TimeDigit]] = TimeMax[TimeDigit];
+          delay(200);
+        }
+      }
+
+      if (Screen ==
+          4)  // Time Intensity
+              // Energy///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+      {
+        // assign tag value 14 to the run button
+        tagoption = 0;  // no touch is default 3d effect and touch is flat
+        effect if (14 == tagval) tagoption = FT_OPT_FLAT; FTImpl.Tag(14);
+        FTImpl.Cmd_Button(423 - 47, 241 - 19, 94, 38, 26, tagoption, "Run");
+
+        // Slider definition and operation
+        // Set the tracker for 3 sliders
+        FTImpl.Cmd_Track(40, 40, 180, 8, 19);   // duration in minutes
+        FTImpl.Cmd_Track(260, 40, 180, 8, 20);  // duration in seconds
+        FTImpl.Cmd_Track(40, 100, 400, 8, 21);  // intensity %
+
+        tagval = 0;
+        TrackRegisterVal = FTImpl.Read32(REG_TRACKER);
+        tagval = TrackRegisterVal & 0xff;
+        if (0 != tagval) {
+          if (19 == tagval) {
+            durationM = TrackRegisterVal >> 16;  // value is 0 - 65535
+          }
+          if (20 == tagval) {
+            durationS = TrackRegisterVal >> 16;  // value is 0 - 65535
+          }
+          if (21 == tagval) {
+            NewIntensity = TrackRegisterVal >> 16;  // value is 0 - 65535
+          }
+        }
+
+        tmpduration = (int32_t)durationM * 60 * 60 / 65535;
+        tmpduration +=
+            (int32_t)durationS * 59 / 65535;  // value is 0 - 3659 seconds
+        Time = tmpduration;
+
+        Intensity = (int32_t)NewIntensity * 100 / 65535;  // value is 0 - 100%
+
+        Energy = (float)Time * (float)EnergyDensity / 1000.0 * (float)Intensity
+        / 100.0;
+
+        // Draw slider with 3d effect
+        FTImpl.ColorRGB(255, 32, 32);
+        // FTImpl.Cmd_FGColor(0x00a000);
+        FTImpl.Cmd_BGColor(0x000000);
+        FTImpl.Tag(19);
+        FTImpl.Cmd_Slider(40, 40, 180, 20, 0, durationM, 65535);
+        FTImpl.Tag(20);
+        FTImpl.Cmd_Slider(260, 40, 180, 20, 0, durationS, 65535);
+        FTImpl.Tag(21);
+        FTImpl.Cmd_Slider(40, 100, 400, 20, 0, NewIntensity, 65535);
+
+        FTImpl.TagMask(0);
+        FTImpl.ColorRGB(0xff, 0xff, 0xff);
+        FTImpl.Cmd_Text(60, 20, 26, FT_OPT_CENTER, "Duration");
+        strduration[0] = '\0';
+        Dec2Ascii(strduration, tmpduration);
+        strcat(strduration, " seconds");
+        FTImpl.Cmd_Text(200, 20, 26, FT_OPT_CENTER, strduration);
+        FTImpl.Cmd_Text(60, 80, 26, FT_OPT_CENTER, "Intensity");
+        // strintensity[0] = '\0';
+        // Dec2Ascii(strintensity,tmpintensity);
+        // strcat(strintensity,"%");
+        sprintf(OutputValue, "%03i", Intensity);
+        OutputValue[3] = '%';
+        OutputValue[4] = '\0';
+        FTImpl.Cmd_Text(200, 80, 26, FT_OPT_CENTER, OutputValue);
+        strEnergy[0] = '\0';
+        Dec2Ascii(strEnergy, Energy);
+        FTImpl.Cmd_Text(240, 160, 28, FT_OPT_CENTER, "Energy (mW/cm2)");
+        FTImpl.Cmd_Text(240, 190, 28, FT_OPT_CENTER, strEnergy);
+        delay(10);
+      }
+
+      if (Screen ==
+          5)  // Current & power
+              // density///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+      {
+        // assign tag value 14 to the save button
+        tagoption =
+            0;  // no touch is default 3d effect and touch is flat effect
+        if (14 == tagval) tagoption = FT_OPT_FLAT;
+        FTImpl.Tag(14);
+        FTImpl.Cmd_Button(423 - 47, 241 - 19, 94, 38, 26, tagoption, "Save");
+
+        // Slider definition and operation
+        /* Set the tracker for 2 sliders */
+        FTImpl.Cmd_Track(40, 100, 400, 8, 19);
+        FTImpl.Cmd_Track(40, 200, 400, 8, 20);
+
+        tagval = 0;
+        TrackRegisterVal = FTImpl.Read32(REG_TRACKER);
+        tagval = TrackRegisterVal & 0xff;
+        if (0 != tagval) {
+          if (19 == tagval) {
+            NewCurrent = TrackRegisterVal >> 16;  // Value is 0 - 65535
+          }
+          if (20 == tagval) {
+            NewEnergyDensity = TrackRegisterVal >> 16;  // Value is 0 - 65535
+          }
+        }
+
+        // Float = (float)NewCurrent*100/65535;
+        tmpNewCurrent =
+            (float)NewCurrent * 100 / 65535 + 0.5;  // value is 0 - 100%
+        Float = (float)NewEnergyDensity * 300 / 65535 +
+                100;  // Value is 100 - 400 uW/mm2
+        tmpNewEnergyDensity = Float;
+
+        /* Draw slider with 3d effect */
+        FTImpl.ColorRGB(0, 255, 0);
+        if (NC != NewCurrent) FTImpl.ColorRGB(255, 0, 0);
+        // FTImpl.Cmd_FGColor(0x00a000);
+        FTImpl.Cmd_BGColor(0x000000);
+        FTImpl.Tag(19);
+        FTImpl.Cmd_Slider(40, 40, 400, 20, 0, NewCurrent, 65535);
+        FTImpl.ColorRGB(0, 255, 0);
+        if (NED != NewEnergyDensity) FTImpl.ColorRGB(255, 0, 0);
+        FTImpl.Tag(20);
+        FTImpl.Cmd_Slider(40, 100, 400, 20, 0, NewEnergyDensity, 65535);
+
+        FTImpl.TagMask(0);
+        FTImpl.ColorRGB(0xff, 0xff, 0xff);
+        FTImpl.Cmd_Text(60, 20, 26, FT_OPT_CENTER, "Current");
+        // strNewCurrent[0] = '\0';
+        // Dec2Ascii(strNewCurrent,tmpNewCurrent);
+        // strcat(strNewCurrent,"%");
+        sprintf(OutputValue, "%03i", tmpNewCurrent);
+        OutputValue[3] = '%';
+        OutputValue[4] = '\0';
+        // FTImpl.Cmd_Text(200, 20, 26, FT_OPT_CENTER, strNewCurrent);
+        FTImpl.Cmd_Text(200, 20, 26, FT_OPT_CENTER, OutputValue);
+        FTImpl.Cmd_Text(60, 80, 26, FT_OPT_CENTER, "Energy Density");
+        strNewEnergyDensity[0] = '\0';
+        Dec2Ascii(strNewEnergyDensity, tmpNewEnergyDensity);
+        strcat(strNewEnergyDensity, "uW/mm2");
+        FTImpl.Cmd_Text(200, 80, 26, FT_OPT_CENTER, strNewEnergyDensity);
+        // FTImpl.DLEnd();
+        // FTImpl.Finish();
+        delay(10);
+      }
+
+      if (Screen ==
+          6)  // Run
+              // ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+      {
+        FTImpl.Display();  // added as first go at getting screen 6 to work
+        FTImpl.Cmd_Swap();
+        FTImpl.Finish();
+        Serial.println(SetCurrent);
+        ReadTimeDate(TimeAndDate);
+        Serial.println(ConvertTimeDate(TimeAndDate));
+
+        do {
+          LogRef++;  // increment logfile count and look for next free file
+          LogFile[11] = char(48 + int(LogRef / 100));
+          LogFile[12] = char(48 + int((LogRef - int(LogRef / 100) * 100) / 10));
+          LogFile[13] = char(48 + int(LogRef - int(LogRef / 10) * 10));
+          Serial.println(LogFile);
+        } while (sd.exists(LogFile));
+
+        if ((LogFile2 = sd.open(LogFile, FILE_WRITE)) ==
+            NULL) {  // Open and ensure file created o.k.
+          Serial.print(F("File error"));
+        }
+        LogFile2.println(
+            "Deliberately left blank");  // Sometimes lose first
+                                         // line, so make it a dummy.
+        LogFile2.print("Test ID: ");     // Record project data
+        LogFile2.println(ProjectString);
+        LogFile2.print("Duration (s): ");
+        LogFile2.print(Time);
+        LogFile2.print(", ");
+        LogFile2.print("Selected Intensity (%): ");
+        LogFile2.print(Intensity);
+        LogFile2.print(", ");
+        LogFile2.print("Selected Current (%): ");
+        LogFile2.println(Current);
+        LogFile2.print("Calculation power density (uW/mm2): ");
+        LogFile2.println(EnergyDensity);
+        LogFile2.print("Energy applied (mW/cm2): ");
+        LogFile2.println(Energy);
+        LogFile2.print("Start Date/Time: ");
+        LogFile2.println(ConvertTimeDate(TimeAndDate));
+        LogFile2.println("Time (s), UV (relative), Temperature (Deg C)");
+
+        if (digitalRead(LID))  // Make sure lid is closed before start
+        {
+          FTImpl
+              .Cmd_DLStart();  // start new display list - ends with
+                               // DL_swap///////////////////////////////////////////////////////////////////////////////////////
+          FTImpl.Begin(FT_BITMAPS);      // Start a new graphics primitive
+          FTImpl.Vertex2ii(0, 0, 0, 0);  // Draw primitive
+          FTImpl.BitmapHandle(0);
+          FTImpl.BitmapSource(0);
+          FTImpl.BitmapLayout(FT_RGB565, 480L * 2, 272);
+          FTImpl.BitmapSize(FT_NEAREST, FT_BORDER, FT_BORDER, 480, 272);
+          FTImpl.ColorRGB(0xff, 0xff, 0xff);
+          FTImpl.Cmd_Text(230, 80, 31, FT_OPT_CENTER, "Close Lid");
+          Serial.println("Close Lid");
+          FTImpl.Cmd_Spinner(240, 150, 0, 0);
+          FTImpl.Display();
+          FTImpl.Cmd_Swap();
+          FTImpl.Finish();
+          do {
+            delay(100);
+          } while (digitalRead(LID));
+        }
+        analogWrite(ADM, 0);
+        analogWrite(PWM, 5);  // LEDs power setting - see Mk6 - starting with
+                              // PWM = 0 causes LED's to fail.
+        delay(100);
+        digitalWrite(FAN, HIGH);
+        delay(1000);  // to make sure current setting voltage R-C circuit is
+                      // charged
+        analogWrite(ADM, SetCurrent);  // turn on LEDs (slowly)
         FTImpl
             .Cmd_DLStart();  // start new display list - ends with
                              // DL_swap///////////////////////////////////////////////////////////////////////////////////////
@@ -618,501 +697,477 @@ void loop() {
         FTImpl.BitmapLayout(FT_RGB565, 480L * 2, 272);
         FTImpl.BitmapSize(FT_NEAREST, FT_BORDER, FT_BORDER, 480, 272);
         FTImpl.ColorRGB(0xff, 0xff, 0xff);
-        FTImpl.Cmd_Text(230, 80, 31, FT_OPT_CENTER, "Close Lid");
-        Serial.println("Close Lid");
+        FTImpl.Cmd_Text(230, 80, 28, FT_OPT_CENTER,
+                        "Starting, please wait....");
         FTImpl.Cmd_Spinner(240, 150, 0, 0);
         FTImpl.Display();
         FTImpl.Cmd_Swap();
         FTImpl.Finish();
+        delay(10000);
+        analogWrite(PWM, int((float)Intensity * 2.55));  // LEDs power setting
+
+        msTime = millis();
+
+        OldiTime = -1;
+        tagval = 42;
+        LidOpen = false;
+        uvPrintVal[0] = '\0';
+
         do {
-          delay(100);
-        } while (digitalRead(LID));
-      }
-      analogWrite(ADM, 0);
-      analogWrite(PWM, 5);  // LEDs power setting - see Mk6 - starting with PWM
-                            // = 0 causes LED's to fail.
-      delay(100);
-      digitalWrite(FAN, HIGH);
-      delay(
-          1000);  // to make sure current setting voltage R-C circuit is charged
-      analogWrite(ADM, SetCurrent);  // turn on LEDs (slowly)
-      FTImpl
-          .Cmd_DLStart();  // start new display list - ends with
-                           // DL_swap///////////////////////////////////////////////////////////////////////////////////////
-      FTImpl.Begin(FT_BITMAPS);      // Start a new graphics primitive
-      FTImpl.Vertex2ii(0, 0, 0, 0);  // Draw primitive
-      FTImpl.BitmapHandle(0);
-      FTImpl.BitmapSource(0);
-      FTImpl.BitmapLayout(FT_RGB565, 480L * 2, 272);
-      FTImpl.BitmapSize(FT_NEAREST, FT_BORDER, FT_BORDER, 480, 272);
-      FTImpl.ColorRGB(0xff, 0xff, 0xff);
-      FTImpl.Cmd_Text(230, 80, 28, FT_OPT_CENTER, "Starting, please wait....");
-      FTImpl.Cmd_Spinner(240, 150, 0, 0);
-      FTImpl.Display();
-      FTImpl.Cmd_Swap();
-      FTImpl.Finish();
-      delay(10000);
-      analogWrite(PWM, int((float)Intensity * 2.55));  // LEDs power setting
+          if (!LidOpen) iTime = Time - int((millis() - msTime) / 1000);
+          TimeString[0] = char(48 + int(iTime / 600));
+          TimeString[1] = char(48 + int(iTime / 60) - 10 * int(iTime / 600));
+          TimeString[3] = char(48 + int((iTime - 60 * int(iTime / 60)) / 10));
+          TimeString[4] = char(48 + iTime - 60 * int(iTime / 60) -
+                               10 * int((iTime - 60 * int(iTime / 60)) / 10));
+          // Serial.println(TimeString);
+          FTImpl
+              .Cmd_DLStart();  // start new display list - ends with
+                               // DL_swap///////////////////////////////////////////////////////////////////////////////////////
+          FTImpl.Begin(FT_BITMAPS);      // Start a new graphics primitive
+          FTImpl.Vertex2ii(0, 0, 0, 0);  // Draw primitive
+          FTImpl.BitmapHandle(0);
+          FTImpl.BitmapSource(0);
+          FTImpl.BitmapLayout(FT_RGB565, 480L * 2, 272);
+          FTImpl.BitmapSize(FT_NEAREST, FT_BORDER, FT_BORDER, 480, 272);
+          FTImpl.ColorRGB(0xff, 0xff, 0xff);
+          FTImpl.Cmd_Text(230, 60, 31, FT_OPT_CENTER, TimeString);
+          FTImpl.Cmd_Text(230, 10, 28, FT_OPT_CENTER, ProjectString);
+          tagoption = 0;  // no touch is default 3d effect and touch is flat
+                          // effect
+          if (13 == tagval) tagoption = FT_OPT_FLAT;
+          FTImpl.Tag(13);
+          FTImpl.Cmd_Button(63 - 47, 241 - 19, 94, 38, 26, tagoption, "Abort");
 
-      msTime = millis();
-
-      OldiTime = -1;
-      tagval = 42;
-      LidOpen = false;
-      uvPrintVal[0] = '\0';
-
-      do {
-        if (!LidOpen) iTime = Time - int((millis() - msTime) / 1000);
-        TimeString[0] = char(48 + int(iTime / 600));
-        TimeString[1] = char(48 + int(iTime / 60) - 10 * int(iTime / 600));
-        TimeString[3] = char(48 + int((iTime - 60 * int(iTime / 60)) / 10));
-        TimeString[4] = char(48 + iTime - 60 * int(iTime / 60) -
-                             10 * int((iTime - 60 * int(iTime / 60)) / 10));
-        // Serial.println(TimeString);
-        FTImpl
-            .Cmd_DLStart();  // start new display list - ends with
-                             // DL_swap///////////////////////////////////////////////////////////////////////////////////////
-        FTImpl.Begin(FT_BITMAPS);      // Start a new graphics primitive
-        FTImpl.Vertex2ii(0, 0, 0, 0);  // Draw primitive
-        FTImpl.BitmapHandle(0);
-        FTImpl.BitmapSource(0);
-        FTImpl.BitmapLayout(FT_RGB565, 480L * 2, 272);
-        FTImpl.BitmapSize(FT_NEAREST, FT_BORDER, FT_BORDER, 480, 272);
-        FTImpl.ColorRGB(0xff, 0xff, 0xff);
-        FTImpl.Cmd_Text(230, 60, 31, FT_OPT_CENTER, TimeString);
-        FTImpl.Cmd_Text(230, 10, 28, FT_OPT_CENTER, ProjectString);
-        tagoption = 0;  // no touch is default 3d effect and touch is flat
-                        // effect
-        if (13 == tagval) tagoption = FT_OPT_FLAT;
-        FTImpl.Tag(13);
-        FTImpl.Cmd_Button(63 - 47, 241 - 19, 94, 38, 26, tagoption, "Abort");
-
-        if (!LidOpen) {
-          sprintf(OutputValue, "%04i", Time);
-          FTImpl.Cmd_Text(300, 90, 28, FT_OPT_CENTERX, "Duration (s):");
-          FTImpl.Cmd_Text(450, 90, 28, FT_OPT_RIGHTX, OutputValue);
-          sprintf(OutputValue, "%03i", Intensity);
-          FTImpl.Cmd_Text(300, 120, 28, FT_OPT_CENTERX, "Intensity (%):");
-          FTImpl.Cmd_Text(450, 120, 28, FT_OPT_RIGHTX, OutputValue);
-          sprintf(OutputValue, "%03i", Current);
-          FTImpl.Cmd_Text(300, 150, 28, FT_OPT_CENTERX, "Current (%):");
-          FTImpl.Cmd_Text(450, 150, 28, FT_OPT_RIGHTX, OutputValue);
-          sprintf(OutputValue, "%03i", EnergyDensity);
-          FTImpl.Cmd_Text(300, 180, 28, FT_OPT_CENTERX, "Energy");
-          FTImpl.Cmd_Text(300, 210, 28, FT_OPT_CENTERX, "Density (uW/mm2):");
-          FTImpl.Cmd_Text(450, 210, 28, FT_OPT_RIGHTX, OutputValue);
-        }
-
-        if (digitalRead(LID) && !LidOpen)  // lid just opened
-        {
-          LidOpen = true;
-          msTimeLid =
-              millis();  // need to keep a record of how long lid is open for
-          analogWrite(PWM, 0);
-          // Serial.println("Close Lid");
-          // analogWrite(ADM,0);
-          // analogWrite(PWM,int((float)Intensity*2.55));              //reset
-          // start case
-        }
-        if (LidOpen) {
-          FTImpl.Cmd_Text(230, 120, 31, FT_OPT_CENTER, "Close Lid");
-        }
-        if (LidOpen && !digitalRead(LID))  // lid was open, but now closed.
-        {
-          analogWrite(PWM, int((float)Intensity * 2.55));
-          msTime = msTime + (millis() - msTimeLid);  // correct the time
-          LidOpen = false;
-        }
-        if (13 == tagval)  // abort pressed.
-        {
-          Serial.println("Abort hit");
-          LogFile2.println("Abort hit");
-          LidOpen = false;
-          goto EscapeNestedLoops;
-        }
-        if (OldiTime != iTime)  // into a new second, so save results
-        {
-          OldiTime = iTime;
-          Serial.print("Time = ");
-          Serial.print(Time - iTime);
-          LogFile2.print(iTime);
-          Serial.print(", uv = ");
-          LogFile2.print(", ");
-          uvValue = uv.readUV();
-          sprintf(uvPrintVal, "%05i",
-                  uvValue);  //%0 left pads the number with zeros, 5 = width, i
-                             //= signed decimal integer
-          for (i = 0; i < 5; i++) {
-            uvPrint[i + 5] = uvPrintVal[i];
+          if (!LidOpen) {
+            sprintf(OutputValue, "%04i", Time);
+            FTImpl.Cmd_Text(300, 90, 28, FT_OPT_CENTERX, "Duration (s):");
+            FTImpl.Cmd_Text(450, 90, 28, FT_OPT_RIGHTX, OutputValue);
+            sprintf(OutputValue, "%03i", Intensity);
+            FTImpl.Cmd_Text(300, 120, 28, FT_OPT_CENTERX, "Intensity (%):");
+            FTImpl.Cmd_Text(450, 120, 28, FT_OPT_RIGHTX, OutputValue);
+            sprintf(OutputValue, "%03i", Current);
+            FTImpl.Cmd_Text(300, 150, 28, FT_OPT_CENTERX, "Current (%):");
+            FTImpl.Cmd_Text(450, 150, 28, FT_OPT_RIGHTX, OutputValue);
+            sprintf(OutputValue, "%03i", EnergyDensity);
+            FTImpl.Cmd_Text(300, 180, 28, FT_OPT_CENTERX, "Energy");
+            FTImpl.Cmd_Text(300, 210, 28, FT_OPT_CENTERX, "Density (uW/mm2):");
+            FTImpl.Cmd_Text(450, 210, 28, FT_OPT_RIGHTX, OutputValue);
           }
-          Serial.print(uvValue);
-          LogFile2.print(uvValue);
-          Serial.print(", t = ");
-          LogFile2.print(", ");
-          i = 0;
-          do  // fiddle to sort out SPI clash
+
+          if (digitalRead(LID) && !LidOpen)  // lid just opened
           {
-            i++;
-            SPI.end();
-          } while ((SPCR & 64) == 64);
-          // Serial.println(i);
-          delay(10);
-          sensors.requestTemperaturesByAddress(
-              DallasAddress);  // can take up to 750ms to get temperature?
-          Temperature = sensors.getTempC(DallasAddress);
-          if (Temperature != -127) {
-            Serial.println(Temperature);
-            sprintf(tempPrintValA, "%03i", int(Temperature));
-            sprintf(tempPrintValB, "%01i",
-                    int((Temperature - int(Temperature)) * 10));
-            for (it = 0; it < 3; it++) {
-              tempPrint[it + 7] = tempPrintValA[it];
-            }
-            tempPrint[11] = tempPrintValB[0];
-          } else {
-            Serial.println("Read Error");
+            LidOpen = true;
+            msTimeLid =
+                millis();  // need to keep a record of how long lid is open for
+            analogWrite(PWM, 0);
+            // Serial.println("Close Lid");
+            // analogWrite(ADM,0);
+            // analogWrite(PWM,int((float)Intensity*2.55));              //reset
+            // start case
           }
-          LogFile2.println(Temperature);
-          // You can have more than one IC on the same bus.
-          // 0 refers to the first IC on the wire
-          do {
-            i--;
-            SPI.begin();
-          } while (i > 0);
-          Serial.println(iTime);
-        }
-        if (!LidOpen) {
-          FTImpl.Cmd_Text(100, 160, 29, FT_OPT_CENTER, tempPrint);
-          FTImpl.Cmd_Text(100, 120, 29, FT_OPT_CENTER, uvPrint);
-        }
-        FTImpl.Display();
-        FTImpl.Cmd_Swap();
-        FTImpl.Finish();
-        FTImpl.TagMask(1);
-        FTImpl.GetTagXY(sTagxy);
-        tagval = sTagxy.tag;
-      } while (iTime > 0);  // end of do loop
+          if (LidOpen) {
+            FTImpl.Cmd_Text(230, 120, 31, FT_OPT_CENTER, "Close Lid");
+          }
+          if (LidOpen && !digitalRead(LID))  // lid was open, but now closed.
+          {
+            analogWrite(PWM, int((float)Intensity * 2.55));
+            msTime = msTime + (millis() - msTimeLid);  // correct the time
+            LidOpen = false;
+          }
+          if (13 == tagval)  // abort pressed.
+          {
+            Serial.println("Abort hit");
+            LogFile2.println("Abort hit");
+            LidOpen = false;
+            goto EscapeNestedLoops;
+          }
+          if (OldiTime != iTime)  // into a new second, so save results
+          {
+            OldiTime = iTime;
+            Serial.print("Time = ");
+            Serial.print(Time - iTime);
+            LogFile2.print(iTime);
+            Serial.print(", uv = ");
+            LogFile2.print(", ");
+            uvValue = uv.readUV();
+            sprintf(uvPrintVal, "%05i",
+                    uvValue);  //%0 left pads the number with zeros, 5 = width,
+                               // i = signed decimal integer
+            for (i = 0; i < 5; i++) {
+              uvPrint[i + 5] = uvPrintVal[i];
+            }
+            Serial.print(uvValue);
+            LogFile2.print(uvValue);
+            Serial.print(", t = ");
+            LogFile2.print(", ");
+            i = 0;
+            do  // fiddle to sort out SPI clash
+            {
+              i++;
+              SPI.end();
+            } while ((SPCR & 64) == 64);
+            // Serial.println(i);
+            delay(10);
+            sensors.requestTemperaturesByAddress(
+                DallasAddress);  // can take up to 750ms to get temperature?
+            Temperature = sensors.getTempC(DallasAddress);
+            if (Temperature != -127) {
+              Serial.println(Temperature);
+              sprintf(tempPrintValA, "%03i", int(Temperature));
+              sprintf(tempPrintValB, "%01i",
+                      int((Temperature - int(Temperature)) * 10));
+              for (it = 0; it < 3; it++) {
+                tempPrint[it + 7] = tempPrintValA[it];
+              }
+              tempPrint[11] = tempPrintValB[0];
+            } else {
+              Serial.println("Read Error");
+            }
+            LogFile2.println(Temperature);
+            // You can have more than one IC on the same bus.
+            // 0 refers to the first IC on the wire
+            do {
+              i--;
+              SPI.begin();
+            } while (i > 0);
+            Serial.println(iTime);
+          }
+          if (!LidOpen) {
+            FTImpl.Cmd_Text(100, 160, 29, FT_OPT_CENTER, tempPrint);
+            FTImpl.Cmd_Text(100, 120, 29, FT_OPT_CENTER, uvPrint);
+          }
+          FTImpl.Display();
+          FTImpl.Cmd_Swap();
+          FTImpl.Finish();
+          FTImpl.TagMask(1);
+          FTImpl.GetTagXY(sTagxy);
+          tagval = sTagxy.tag;
+        } while (iTime > 0);  // end of do loop
 
-      analogWrite(PWM, 0);
+        analogWrite(PWM, 0);
 
-    EscapeNestedLoops:
-      Serial.println(iTime);
-      digitalWrite(FAN, LOW);
-      analogWrite(ADM, 0);
-      Serial.print("End Date/Time: ");
-      LogFile2.print("End Date/Time: ");
-      ReadTimeDate(TimeAndDate);
-      LogFile2.println(ConvertTimeDate(TimeAndDate));
-      Serial.println(ConvertTimeDate(TimeAndDate));
-      LogFile2.close();
-      Screen = 0;
-      Loadimage2ram();
+      EscapeNestedLoops:
+        Serial.println(iTime);
+        digitalWrite(FAN, LOW);
+        analogWrite(ADM, 0);
+        Serial.print("End Date/Time: ");
+        LogFile2.print("End Date/Time: ");
+        ReadTimeDate(TimeAndDate);
+        LogFile2.println(ConvertTimeDate(TimeAndDate));
+        Serial.println(ConvertTimeDate(TimeAndDate));
+        LogFile2.close();
+        setNextScreen(kDisplayScreenHome);
+      }
+
+      if (Screen == 10)  // Info
+      {
+        FTImpl.Cmd_Text(230, 20, 28, FT_OPT_CENTER, "PRODUCT INFORMATION PAGE");
+        FTImpl.Cmd_Text(230, 60, 26, FT_OPT_CENTER,
+                        "405nm Luminus SST-10-UV LEDs");
+        FTImpl.Cmd_Text(230, 90, 26, FT_OPT_CENTER, "ST LED6001 controller");
+        FTImpl.Cmd_Text(230, 120, 26, FT_OPT_CENTER,
+                        "Drive current: 100% = 0.5A, 0% = OFF");
+        FTImpl.Cmd_Text(230, 150, 26, FT_OPT_CENTER, "Software version 8.0");
+        FTImpl.Cmd_Text(230, 200, 26, FT_OPT_CENTER,
+                        "Designed & built by BNC for Lightox");
+      }
+
+      if (sd_present) {
+        FTImpl.Cmd_Text(40, FT_DISPLAYHEIGHT / 3, 28, FT_OPT_CENTERY,
+                        "Storage Device not Found");
+      }
     }
-
-    if (Screen == 10)  // Info
-    {
-      FTImpl.Cmd_Text(230, 20, 28, FT_OPT_CENTER, "PRODUCT INFORMATION PAGE");
-      FTImpl.Cmd_Text(230, 60, 26, FT_OPT_CENTER,
-                      "405nm Luminus SST-10-UV LEDs");
-      FTImpl.Cmd_Text(230, 90, 26, FT_OPT_CENTER, "ST LED6001 controller");
-      FTImpl.Cmd_Text(230, 120, 26, FT_OPT_CENTER,
-                      "Drive current: 100% = 0.5A, 0% = OFF");
-      FTImpl.Cmd_Text(230, 150, 26, FT_OPT_CENTER, "Software version 8.0");
-      FTImpl.Cmd_Text(230, 200, 26, FT_OPT_CENTER,
-                      "Designed & built by BNC for Lightox");
-    }
-
-    if (sd_present) {
-      FTImpl.Cmd_Text(40, FT_DISPLAYHEIGHT / 3, 28, FT_OPT_CENTERY,
-                      "Storage Device not Found");
-    }
-
     FTImpl.Display();
     FTImpl.Cmd_Swap();
     FTImpl.Finish();
     // End of display
     // plotting/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // Plot requests below here will nt get implemented.
-
-    if (tagval == 11)  // Lightox main, run button picked
-    {
-      Screen = 3;  // select notepad before going to run screen
-      Loadimage2ram();
-      Notepad();
-    }
-
-    if (tagval == 12)  // Options
-    {
-      Screen = 1;
-      Loadimage2ram();
-    }
-
-    if (tagval == 13)  // quit
-    {
-      FTImpl.Cmd_DLStart();
-      FTImpl.ClearColorRGB(64, 64, 64);
-      FTImpl.Clear(1, 1, 1);
-      FTImpl.ColorRGB(0xff, 0xff, 0xff);
-      FTImpl.Display();
-      FTImpl.Cmd_Swap();
-      FTImpl.Finish();
-      Screen = 0;
-      Loadimage2ram();
-    }
-
-    if (tagval == 14)  // Run / Save.............run option not coded yet
-    {
-      FTImpl.Cmd_DLStart();
-      FTImpl.ClearColorRGB(64, 64, 64);
-      FTImpl.Clear(1, 1, 1);
-      FTImpl.ColorRGB(0xff, 0xff, 0xff);
-      FTImpl.Display();
-      FTImpl.Cmd_Swap();
-      FTImpl.Finish();
-
-      if (Screen == 5)  //=More
+    if (currentScreen != kDisplayScreenHome) {
+      if (tagval == 11)  // Lightox main, run button picked
       {
-        Float = (float)NewEnergyDensity / 65535 * 300 + 100;
-        EnergyDensity = Float;
-        EEPROM.put(eeAddress, EnergyDensity);
-        // Float = (float)NewCurrent/65535*100;
-        // Current = Float;
-        Current = tmpNewCurrent;
-        SetCurrent = (0.26 + 0.94 * (float)Current / 100.0) / 5.0 * 255;
-        Serial.print("Current set to: ");
-        Serial.println(SetCurrent);
-        FirstPass = true;
-        tagval = 18;
-      } else if (Screen == 4)  //= TIE
-      {
-        Serial.println("Run");
-        Screen = 6;
+        Screen = 3;  // select notepad before going to run screen
         Loadimage2ram();
-      } else if (Screen == 2)  //=Date
-      {
-        Serial.println("Save date");
-        SetTimeDate(TimeAndDate[TimePointer[0]], TimeAndDate[TimePointer[1]],
-                    TimeAndDate[TimePointer[2]], TimeAndDate[TimePointer[3]],
-                    TimeAndDate[TimePointer[4]], TimeAndDate[TimePointer[5]]);
-        Screen = 0;
-        Loadimage2ram();
-        DateRead = false;
-      }
-    }
-
-    if (tagval == 15)  // Set date and time
-    {
-      // FTImpl.DLStart();
-      // FTImpl.ClearColorRGB(64,64,64);
-      // FTImpl.Clear(1,1,1);
-      // FTImpl.Cmd_Swap();
-      Screen = 2;
-      Loadimage2ram();
-    }
-
-    if (tagval == 16)  // Copy files
-    {
-      Screen = 9;
-      Loadimage2ram();
-      LogRef = 0;
-      logcopycount = 0;
-
-      // do
-      //{
-      //  if(mySerial.available()>0) checkfileexist[0] = mySerial.read();
-      //}while(!mySerial.available());  //make sure the buffer is empty
-
-      // sprintf(checkfileexist,"$size %s line\r","LOG00001.CSV");
-      // mySerial.write(checkfileexist);
-      // i = 0;
-      // do
-      //{
-      //  i++;
-      //}while((!mySerial.available()) && (i < 32000));        // Wait for data
-      //to be returned
-
-      if (1 == 2) {
-        Serial.println("File exists");
-        FTImpl
-            .Cmd_DLStart();  // start new display list - ends with
-                             // DL_swap///////////////////////////////////////////////////////////////////////////////////////
-        FTImpl.Begin(FT_BITMAPS);      // Start a new graphics primitive
-        FTImpl.Vertex2ii(0, 0, 0, 0);  // Draw primitive
-        FTImpl.BitmapHandle(0);
-        FTImpl.BitmapSource(0);
-        FTImpl.BitmapLayout(FT_RGB565, 480L * 2, 272);
-        FTImpl.BitmapSize(FT_NEAREST, FT_BORDER, FT_BORDER, 480, 272);
-        FTImpl.ColorRGB(0xff, 0xff, 0xff);
-        FTImpl.Cmd_Text(230, 80, 31, FT_OPT_CENTER, "Flash drive not empty");
-        FTImpl.Display();
-        FTImpl.Cmd_Swap();
-        FTImpl.Finish();
-        delay(5000);
-      } else {
-        do {
-          LogRef++;
-          LogFile[11] =
-              char(48 + int(LogRef / 100));  // can cope with up to 999 files
-          LogFile[12] = char(48 + int((LogRef - int(LogRef / 100) * 100) / 10));
-          LogFile[13] = char(48 + int(LogRef - int(LogRef / 10) * 10));
-          Serial.println(LogFile);
-          if (sd.exists(LogFile)) {
-            // copy file
-            if ((LogFile2 = sd.open(LogFile)) == NULL) {
-              Serial.print(F("Log file not found"));
-            } else {
-              if (!digitalRead(FLASH_IN))  // make sure flash drive is inserted
-              {
-                Serial.print(F("No flash drive found"));
-              } else {
-                for (i = 11; i < 14; i++) FlashFile[i + 1] = LogFile[i];
-                flash_data(FlashFile, true);  // open file for write
-                delay(1000);  // Needs extra time to create the file.
-                              // Depends on flash drive used
-                logcopycount++;
-                LineCount = 0;
-
-                for (i = 0; i < 80; i++)
-                  sdlogbuffer[i] = '\0';  // clear the log buffer
-                while (LogFile2.available() > 0) {
-                  sdlog = LogFile2.read();
-                  if (sdlog != char(13)) {
-                    sdlogbuffer[logpointer++] = sdlog;
-                  } else {
-                    LineCount++;
-                    FTImpl
-                        .Cmd_DLStart();  // start new display list - ends with
-                                         // DL_swap///////////////////////////////////////////////////////////////////////////////////////
-                    FTImpl.Begin(FT_BITMAPS);  // Start a new graphics primitive
-                    FTImpl.ClearColorRGB(100, 100, 100);
-                    FTImpl.Clear(1, 1, 1);
-                    FTImpl.Vertex2ii(0, 0, 0, 0);  // Draw primitive
-                    FTImpl.BitmapHandle(0);
-                    FTImpl.BitmapSource(0);
-                    FTImpl.BitmapLayout(FT_RGB565, 480L * 2, 272);
-                    FTImpl.BitmapSize(FT_NEAREST, FT_BORDER, FT_BORDER, 480,
-                                      272);
-                    FTImpl.ColorRGB(0xff, 0xff, 0xff);
-                    FTImpl.Cmd_Text(230, 50, 31, FT_OPT_CENTER, "Copying....");
-                    FTImpl.Cmd_Text(230, 100, 29, FT_OPT_CENTER, "File:");
-                    FTImpl.Cmd_Text(230, 130, 29, FT_OPT_CENTER, LogFile);
-                    LineCountString[0] =
-                        char(48 + int(LineCount /
-                                      1000));  // can cope with up to 9999 lines
-                    LineCountString[1] = char(
-                        48 +
-                        int((LineCount - int(LineCount / 1000) * 1000) / 100));
-                    LineCountString[2] =
-                        char(48 + int((LineCount - int(LineCount / 100) * 100) /
-                                      10));
-                    LineCountString[3] =
-                        char(48 + int(LineCount - int(LineCount / 10) * 10));
-                    LineCountString[4] = '\0';
-                    FTImpl.Cmd_Text(230, 160, 29, FT_OPT_CENTER, "Line:");
-                    FTImpl.Cmd_Text(230, 190, 29, FT_OPT_CENTER,
-                                    LineCountString);
-                    // Serial.println(LineCountString);
-                    FTImpl.Display();
-                    FTImpl.Cmd_Swap();
-                    FTImpl.Finish();
-
-                    flash_data(sdlogbuffer, false);
-                    for (i = 0; i < logpointer; i++) sdlogbuffer[i] = '\0';
-                    logpointer = 0;
-                  }
-                }
-                // Close the file by sending Control-Z
-                mySerial.write(26);  // 26 is Control-Z character
-                LogFile2.close();
-                sd.remove(LogFile);  // delete the logfile
-              }
-            }
-          } else {
-            LogRef = 0;
-            delay(2000);
-            Screen = 1;
-            Loadimage2ram();
-          }
-        } while (LogRef > 0);
-
-        FTImpl
-            .Cmd_DLStart();  // start new display list - ends with
-                             // DL_swap///////////////////////////////////////////////////////////////////////////////////////
-        FTImpl.Begin(FT_BITMAPS);  // Start a new graphics primitive
-        FTImpl.ClearColorRGB(100, 100, 100);
-        FTImpl.Clear(1, 1, 1);
-        FTImpl.Vertex2ii(0, 0, 0, 0);  // Draw primitive
-        FTImpl.BitmapHandle(0);
-        FTImpl.BitmapSource(0);
-        FTImpl.BitmapLayout(FT_RGB565, 480L * 2, 272);
-        FTImpl.BitmapSize(FT_NEAREST, FT_BORDER, FT_BORDER, 480, 272);
-        FTImpl.ColorRGB(0xff, 0xff, 0xff);
-        LineCountString[0] = char(
-            48 + int(logcopycount / 100));  // can cope with up to 999 lines
-        LineCountString[1] =
-            char(48 + int((logcopycount - int(logcopycount / 100) * 100) / 10));
-        LineCountString[2] =
-            char(48 + int(logcopycount - int(logcopycount / 10) * 10));
-        LineCountString[3] = '\0';
-        FTImpl.Cmd_Text(230, 160, 29, FT_OPT_CENTER, LineCountString);
-        FTImpl.Cmd_Text(230, 190, 29, FT_OPT_CENTER, "Files copied.");
-        FTImpl.Display();
-        FTImpl.Cmd_Swap();
-        FTImpl.Finish();
-        delay(2000);
-      }
-    }
-
-    if (tagval == 17)  // Product info
-    {
-      // FTImpl.DLStart();
-      // FTImpl.ClearColorRGB(64,64,64);
-      // FTImpl.Clear(1,1,1);
-      // FTImpl.Cmd_Swap();
-      Screen = 10;
-      Loadimage2ram();
-    }
-
-    if (tagval == 18)  // More
-    {
-      FTImpl.DLStart();
-      FTImpl.ClearColorRGB(64, 64, 64);
-      FTImpl.Clear(1, 1, 1);
-      FTImpl.Cmd_Swap();
-      Float = ((float)EnergyDensity - 100) / 300 * 65535;
-      NewEnergyDensity = Float;
-      NED = NewEnergyDensity;
-      Float = (float)Current / 100 * 65535;
-      NewCurrent = Float;
-      NC = NewCurrent;
-      Screen = 5;
-      Loadimage2ram();
-      if (FirstPass) {
-        FirstPass = false;
-      } else {
-        FirstPass = true;
         Notepad();
       }
-    }
 
-    if (tagval == 22)  // Sam
-    {
-      // FTImpl.DLStart();
-      // FTImpl.ClearColorRGB(64,64,64);
-      // FTImpl.Clear(1,1,1);
-      // FTImpl.Cmd_Swap();
-      Screen = 7;
-      Loadimage2ram();
-    }
+      if (tagval == 12)  // Options
+      {
+        Screen = 1;
+        Loadimage2ram();
+      }
 
-    if (tagval == 23)  // Carrie
-    {
-      // FTImpl.DLStart();
-      // FTImpl.ClearColorRGB(64,64,64);
-      // FTImpl.Clear(1,1,1);
-      // FTImpl.Cmd_Swap();
-      Screen = 8;
-      Loadimage2ram();
+      if (tagval == 13)  // quit
+      {
+        FTImpl.Cmd_DLStart();
+        FTImpl.ClearColorRGB(64, 64, 64);
+        FTImpl.Clear(1, 1, 1);
+        FTImpl.ColorRGB(0xff, 0xff, 0xff);
+        FTImpl.Display();
+        FTImpl.Cmd_Swap();
+        FTImpl.Finish();
+        setNextScreen(kDisplayScreenHome);
+      }
+
+      if (tagval == 14)  // Run / Save.............run option not coded yet
+      {
+        FTImpl.Cmd_DLStart();
+        FTImpl.ClearColorRGB(64, 64, 64);
+        FTImpl.Clear(1, 1, 1);
+        FTImpl.ColorRGB(0xff, 0xff, 0xff);
+        FTImpl.Display();
+        FTImpl.Cmd_Swap();
+        FTImpl.Finish();
+
+        if (Screen == 5)  //=More
+        {
+          Float = (float)NewEnergyDensity / 65535 * 300 + 100;
+          EnergyDensity = Float;
+          EEPROM.put(eeAddress, EnergyDensity);
+          // Float = (float)NewCurrent/65535*100;
+          // Current = Float;
+          Current = tmpNewCurrent;
+          SetCurrent = (0.26 + 0.94 * (float)Current / 100.0) / 5.0 * 255;
+          Serial.print("Current set to: ");
+          Serial.println(SetCurrent);
+          FirstPass = true;
+          tagval = 18;
+        } else if (Screen == 4)  //= TIE
+        {
+          Serial.println("Run");
+          Screen = 6;
+          Loadimage2ram();
+        } else if (Screen == 2)  //=Date
+        {
+          Serial.println("Save date");
+          SetTimeDate(TimeAndDate[TimePointer[0]], TimeAndDate[TimePointer[1]],
+                      TimeAndDate[TimePointer[2]], TimeAndDate[TimePointer[3]],
+                      TimeAndDate[TimePointer[4]], TimeAndDate[TimePointer[5]]);
+          DateRead = false;
+          setNextScreen(kDisplayScreenHome);
+        }
+      }
+
+      if (tagval == 15)  // Set date and time
+      {
+        // FTImpl.DLStart();
+        // FTImpl.ClearColorRGB(64,64,64);
+        // FTImpl.Clear(1,1,1);
+        // FTImpl.Cmd_Swap();
+        Screen = 2;
+        Loadimage2ram();
+      }
+
+      if (tagval == 16)  // Copy files
+      {
+        Screen = 9;
+        Loadimage2ram();
+        LogRef = 0;
+        logcopycount = 0;
+
+        // do
+        //{
+        //  if(mySerial.available()>0) checkfileexist[0] = mySerial.read();
+        //}while(!mySerial.available());  //make sure the buffer is empty
+
+        // sprintf(checkfileexist,"$size %s line\r","LOG00001.CSV");
+        // mySerial.write(checkfileexist);
+        // i = 0;
+        // do
+        //{
+        //  i++;
+        //}while((!mySerial.available()) && (i < 32000));        // Wait for
+        // data
+        // to be returned
+
+        if (1 == 2) {
+          Serial.println("File exists");
+          FTImpl
+              .Cmd_DLStart();  // start new display list - ends with
+                               // DL_swap///////////////////////////////////////////////////////////////////////////////////////
+          FTImpl.Begin(FT_BITMAPS);      // Start a new graphics primitive
+          FTImpl.Vertex2ii(0, 0, 0, 0);  // Draw primitive
+          FTImpl.BitmapHandle(0);
+          FTImpl.BitmapSource(0);
+          FTImpl.BitmapLayout(FT_RGB565, 480L * 2, 272);
+          FTImpl.BitmapSize(FT_NEAREST, FT_BORDER, FT_BORDER, 480, 272);
+          FTImpl.ColorRGB(0xff, 0xff, 0xff);
+          FTImpl.Cmd_Text(230, 80, 31, FT_OPT_CENTER, "Flash drive not empty");
+          FTImpl.Display();
+          FTImpl.Cmd_Swap();
+          FTImpl.Finish();
+          delay(5000);
+        } else {
+          do {
+            LogRef++;
+            LogFile[11] =
+                char(48 + int(LogRef / 100));  // can cope with up to 999 files
+            LogFile[12] =
+                char(48 + int((LogRef - int(LogRef / 100) * 100) / 10));
+            LogFile[13] = char(48 + int(LogRef - int(LogRef / 10) * 10));
+            Serial.println(LogFile);
+            if (sd.exists(LogFile)) {
+              // copy file
+              if ((LogFile2 = sd.open(LogFile)) == NULL) {
+                Serial.print(F("Log file not found"));
+              } else {
+                if (!digitalRead(
+                        FLASH_IN))  // make sure flash drive is inserted
+                {
+                  Serial.print(F("No flash drive found"));
+                } else {
+                  for (i = 11; i < 14; i++) FlashFile[i + 1] = LogFile[i];
+                  flash_data(FlashFile, true);  // open file for write
+                  delay(1000);  // Needs extra time to create the file.
+                                // Depends on flash drive used
+                  logcopycount++;
+                  LineCount = 0;
+
+                  for (i = 0; i < 80; i++)
+                    sdlogbuffer[i] = '\0';  // clear the log buffer
+                  while (LogFile2.available() > 0) {
+                    sdlog = LogFile2.read();
+                    if (sdlog != char(13)) {
+                      sdlogbuffer[logpointer++] = sdlog;
+                    } else {
+                      LineCount++;
+                      FTImpl
+                          .Cmd_DLStart();  // start new display list - ends with
+                                           // DL_swap///////////////////////////////////////////////////////////////////////////////////////
+                      FTImpl.Begin(
+                          FT_BITMAPS);  // Start a new graphics primitive
+                      FTImpl.ClearColorRGB(100, 100, 100);
+                      FTImpl.Clear(1, 1, 1);
+                      FTImpl.Vertex2ii(0, 0, 0, 0);  // Draw primitive
+                      FTImpl.BitmapHandle(0);
+                      FTImpl.BitmapSource(0);
+                      FTImpl.BitmapLayout(FT_RGB565, 480L * 2, 272);
+                      FTImpl.BitmapSize(FT_NEAREST, FT_BORDER, FT_BORDER, 480,
+                                        272);
+                      FTImpl.ColorRGB(0xff, 0xff, 0xff);
+                      FTImpl.Cmd_Text(230, 50, 31, FT_OPT_CENTER,
+                                      "Copying....");
+                      FTImpl.Cmd_Text(230, 100, 29, FT_OPT_CENTER, "File:");
+                      FTImpl.Cmd_Text(230, 130, 29, FT_OPT_CENTER, LogFile);
+                      LineCountString[0] = char(
+                          48 + int(LineCount /
+                                   1000));  // can cope with up to 9999 lines
+                      LineCountString[1] = char(
+                          48 + int((LineCount - int(LineCount / 1000) * 1000) /
+                                   100));
+                      LineCountString[2] = char(
+                          48 +
+                          int((LineCount - int(LineCount / 100) * 100) / 10));
+                      LineCountString[3] =
+                          char(48 + int(LineCount - int(LineCount / 10) * 10));
+                      LineCountString[4] = '\0';
+                      FTImpl.Cmd_Text(230, 160, 29, FT_OPT_CENTER, "Line:");
+                      FTImpl.Cmd_Text(230, 190, 29, FT_OPT_CENTER,
+                                      LineCountString);
+                      // Serial.println(LineCountString);
+                      FTImpl.Display();
+                      FTImpl.Cmd_Swap();
+                      FTImpl.Finish();
+
+                      flash_data(sdlogbuffer, false);
+                      for (i = 0; i < logpointer; i++) sdlogbuffer[i] = '\0';
+                      logpointer = 0;
+                    }
+                  }
+                  // Close the file by sending Control-Z
+                  mySerial.write(26);  // 26 is Control-Z character
+                  LogFile2.close();
+                  sd.remove(LogFile);  // delete the logfile
+                }
+              }
+            } else {
+              LogRef = 0;
+              delay(2000);
+              Screen = 1;
+              Loadimage2ram();
+            }
+          } while (LogRef > 0);
+
+          FTImpl
+              .Cmd_DLStart();  // start new display list - ends with
+                               // DL_swap///////////////////////////////////////////////////////////////////////////////////////
+          FTImpl.Begin(FT_BITMAPS);  // Start a new graphics primitive
+          FTImpl.ClearColorRGB(100, 100, 100);
+          FTImpl.Clear(1, 1, 1);
+          FTImpl.Vertex2ii(0, 0, 0, 0);  // Draw primitive
+          FTImpl.BitmapHandle(0);
+          FTImpl.BitmapSource(0);
+          FTImpl.BitmapLayout(FT_RGB565, 480L * 2, 272);
+          FTImpl.BitmapSize(FT_NEAREST, FT_BORDER, FT_BORDER, 480, 272);
+          FTImpl.ColorRGB(0xff, 0xff, 0xff);
+          LineCountString[0] = char(
+              48 + int(logcopycount / 100));  // can cope with up to 999 lines
+          LineCountString[1] = char(
+              48 + int((logcopycount - int(logcopycount / 100) * 100) / 10));
+          LineCountString[2] =
+              char(48 + int(logcopycount - int(logcopycount / 10) * 10));
+          LineCountString[3] = '\0';
+          FTImpl.Cmd_Text(230, 160, 29, FT_OPT_CENTER, LineCountString);
+          FTImpl.Cmd_Text(230, 190, 29, FT_OPT_CENTER, "Files copied.");
+          FTImpl.Display();
+          FTImpl.Cmd_Swap();
+          FTImpl.Finish();
+          delay(2000);
+        }
+      }
+
+      if (tagval == 17)  // Product info
+      {
+        // FTImpl.DLStart();
+        // FTImpl.ClearColorRGB(64,64,64);
+        // FTImpl.Clear(1,1,1);
+        // FTImpl.Cmd_Swap();
+        Screen = 10;
+        Loadimage2ram();
+      }
+
+      if (tagval == 18)  // More
+      {
+        FTImpl.DLStart();
+        FTImpl.ClearColorRGB(64, 64, 64);
+        FTImpl.Clear(1, 1, 1);
+        FTImpl.Cmd_Swap();
+        Float = ((float)EnergyDensity - 100) / 300 * 65535;
+        NewEnergyDensity = Float;
+        NED = NewEnergyDensity;
+        Float = (float)Current / 100 * 65535;
+        NewCurrent = Float;
+        NC = NewCurrent;
+        Screen = 5;
+        Loadimage2ram();
+        if (FirstPass) {
+          FirstPass = false;
+        } else {
+          FirstPass = true;
+          Notepad();
+        }
+      }
+
+      if (tagval == 22)  // Sam
+      {
+        // FTImpl.DLStart();
+        // FTImpl.ClearColorRGB(64,64,64);
+        // FTImpl.Clear(1,1,1);
+        // FTImpl.Cmd_Swap();
+        Screen = 7;
+        Loadimage2ram();
+      }
+
+      if (tagval == 23)  // Carrie
+      {
+        // FTImpl.DLStart();
+        // FTImpl.ClearColorRGB(64,64,64);
+        // FTImpl.Clear(1,1,1);
+        // FTImpl.Cmd_Swap();
+        Screen = 8;
+        Loadimage2ram();
+      }
     }
   }
 }
@@ -1515,8 +1570,7 @@ void Notepad(void) {
       FTImpl.ClearColorRGB(64, 64, 64);
       FTImpl.Clear(1, 1, 1);
       FTImpl.Cmd_Swap();
-      Screen = 0;
-      Loadimage2ram();
+      setNextScreen(kDisplayScreenHome);
       goto Letsgetoutofhere;
     }
 
@@ -1539,7 +1593,7 @@ void Notepad(void) {
             (Buffer.notepad[0][2] == '3') && (Buffer.notepad[0][3] == '3')) {
           Screen = 5;  // Goto setings screen
         } else {
-          Screen = 0;
+          setNextScreen(kDisplayScreenHome);
         }
         Loadimage2ram();
         goto Letsgetoutofhere;
