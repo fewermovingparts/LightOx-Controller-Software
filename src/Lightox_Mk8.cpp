@@ -37,6 +37,16 @@
 #include <stdio.h>
 #include "Adafruit_VEML6070.h"  //UV sensor
 
+enum NotepadResult { kNotepadResultQuit, kNotepadResultSave};
+// Buffer for the notepads
+#define MAX_FT_LINES 2  // Max FT_LINES allows to Display
+struct Notepad_buffer {
+  char *temp;  // The "*" makes it an indirection operator, which means it
+               // points to the address of a variable, so temp = x, points to
+               // the address of x.
+  char notepad[MAX_FT_LINES][80];
+} Buffer;
+
 // Function prototypes
 int16_t BootupConfigure();
 void Calibrate();
@@ -45,7 +55,7 @@ String ConvertTimeDate(int TimeDate[]);
 int32_t Dec2Ascii(char *pSrc, int32_t value);
 void flash_data(char *pstring, boolean Print);
 void Loadimage2ram();
-void Notepad(void);
+NotepadResult Notepad(const char* initialText = "\0");
 void ReadTimeDate(int TimeDate[]);
 void RTC_init();
 void SetTimeDate(int d, int mo, int y, int h, int mi, int s);
@@ -256,7 +266,8 @@ const uint32_t kColourPrimary = 0x2A5673 + 0x001000;  // dark greeny
 enum DisplayScreen {
   kDisplayScreenHome = 0,
   kDisplayScreenNewExp,
-  kDisplayScreenBrowseExperiments
+  kDisplayScreenBrowseExperiments,
+  kDisplayScreenExpSettings,
 };
 bool screenJustSelected = true;
 DisplayScreen currentScreen = kDisplayScreenHome;
@@ -308,6 +319,18 @@ void homeScreen(uint8_t selectedTag) {
   }
 }
 
+void newExpScreen(uint16_t currentScreen) {
+  NotepadResult result = Notepad(ProjectString);
+  if (kNotepadResultSave == result) {
+    strncpy(ProjectString, Buffer.notepad[0], min(sizeof(ProjectString),sizeof(Buffer.notepad[0])));
+    ProjectString[sizeof(ProjectString) - 1] = '\0';
+    setNextScreen(kDisplayScreenExpSettings);
+  }
+  else {
+    setNextScreen(kDisplayScreenHome);
+  }
+}
+
 void loop() {
   // newscreen
   sTagXY sTagxy;
@@ -342,6 +365,9 @@ void loop() {
 
     if (kDisplayScreenHome == currentScreen) {
       homeScreen(tagval);
+      tagval = 0; // TODO remove, avoids below code detecting a press
+    } else if (kDisplayScreenNewExp == currentScreen){
+      newExpScreen(tagval);
       tagval = 0; // TODO remove, avoids below code detecting a press
     } else {
       if (Screen !=
@@ -478,7 +504,7 @@ void loop() {
       {
         // assign tag value 14 to the run button
         tagoption = 0;  // no touch is default 3d effect and touch is flat
-        effect if (14 == tagval) tagoption = FT_OPT_FLAT; FTImpl.Tag(14);
+        if (14 == tagval) tagoption = FT_OPT_FLAT; FTImpl.Tag(14);
         FTImpl.Cmd_Button(423 - 47, 241 - 19, 94, 38, 26, tagoption, "Run");
 
         // Slider definition and operation
@@ -1431,7 +1457,6 @@ String ConvertTimeDate(int TimeDate[]) {
 #define ON 1
 #define OFF 0
 #define Font 27         // Font Size
-#define MAX_FT_LINES 2  // Max FT_LINES allows to Display
 
 #define SPECIAL_FUN 251
 #define BACK_SPACE 251   // Back space
@@ -1449,13 +1474,7 @@ struct {
   uint8_t Exit : 1;
 } Flag;
 
-// Buffer for the notepads
-struct Notepad_buffer {
-  char *temp;  // The "*" makes it an indirection operator, which means it
-               // points to the address of a variable, so temp = x, points to
-               // the address of x.
-  char notepad[MAX_FT_LINES][80];
-} Buffer;
+
 
 static uint8_t sk = 0;
 /********API to return the assigned TAG value when penup,for the
@@ -1511,7 +1530,7 @@ uint8_t Ft_Gpu_Rom_Font_WH(uint8_t Char, uint8_t font) {
 }
 
 // Notepad buffer
-void Notepad(void) {
+NotepadResult Notepad(const char* initialText) {
   /*local variables*/
   uint8_t Line = 0;
   uint16_t Disp_pos = 0, But_opt;
@@ -1525,18 +1544,15 @@ void Notepad(void) {
   for (tval = 0; tval < MAX_FT_LINES; tval++)
     memset(&Buffer.notepad[tval], '\0',
            sizeof(Buffer.notepad[tval]));  // set all of buffer to be null
-  noofchars = 0;
 
-  if (Screen == 3)  // Run
+  for (i = 0; i < strlen(initialText);
+        i++)  // load in the Project Description
   {
-    for (i = 0; i < strlen(ProjectString);
-         i++)  // load in the Project Description
-    {
-      Buffer.notepad[0][i] = ProjectString[i];
-    }
-    noofchars = i;
-    i = 0;
+    Buffer.notepad[0][i] = initialText[i];
   }
+  noofchars = i;
+  i = 0;
+
 
   /*intial setup*/
   Line = 0;                  // Starting line
@@ -1581,13 +1597,7 @@ void Notepad(void) {
       FTImpl.Clear(1, 1, 1);
       FTImpl.Cmd_Swap();
       if (Screen == 3) {
-        Screen = 4;  // Goto run screen
-        Loadimage2ram();
-        memset(ProjectString, '\0', sizeof(ProjectString));  // clear the string
-        for (i = 0; i < strlen(Buffer.notepad[0]); i++) {
-          ProjectString[i] = Buffer.notepad[0][i];
-        }
-        goto Letsgetoutofhere;
+        return kNotepadResultSave;
       } else {
         if ((Buffer.notepad[0][0] == '3') && (Buffer.notepad[0][1] == '3') &&
             (Buffer.notepad[0][2] == '3') && (Buffer.notepad[0][3] == '3')) {
@@ -1708,8 +1718,8 @@ void Notepad(void) {
     FTImpl.Clear(1, 1, 1);
     FTImpl.ColorRGB(255, 255, 255);
     FTImpl.TagMask(1);  // enable tag buffer updation
-    FTImpl.Cmd_FGColor(0x703800);
-    FTImpl.Cmd_BGColor(0x703800);
+    FTImpl.Cmd_FGColor(kColourPrimary);
+    FTImpl.Cmd_BGColor(0x19354B);
     But_opt = (Read_sfk == BACK)
                   ? FT_OPT_FLAT
                   : 0;  // button color change if the button during press
