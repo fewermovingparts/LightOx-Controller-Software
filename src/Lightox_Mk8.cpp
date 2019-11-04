@@ -138,7 +138,33 @@ uint8_t DallasAddress[8];
 int32_t EnergyDensity, NewEnergyDensity,
     NED;  // value stored in EEPROM from callibration in mW/mm^2
 int eeAddress = 0;
+const int kCalibrationAddress = 10;
+const byte kCalibrationMagicByte = 0xAA;
+const int kCalibrationNumBytes = 24;
+bool needsCalibration = true;
 bool FirstPass = false, LidOpen = false;
+
+static bool getCalibrationRequired() {
+  return EEPROM.read(kCalibrationAddress) != kCalibrationMagicByte;
+}
+
+static void calibrateAndStore() {
+  Calibrate();
+  Serial.println("Storing calibration:");
+  for (int i = 0; i < kCalibrationNumBytes; ++i) {
+    const uint8_t val = FTImpl.Read(REG_CTOUCH_TRANSFORM_A + i);
+    EEPROM.write(kCalibrationAddress + 1 + i, val);
+    Serial.println(val);
+  }
+  EEPROM.write(kCalibrationAddress, kCalibrationMagicByte);
+}
+
+static void loadCalibration() {
+  for (int i = 0; i < kCalibrationNumBytes; ++i) {
+    const uint8_t val = EEPROM.read(kCalibrationAddress + 1 + i);
+    FTImpl.Write(REG_CTOUCH_TRANSFORM_A + i, val);
+  }
+}
 
 void setup(void) {
   pinMode(11, INPUT);  // Uno SPI pins (11, 12 & 13) not used on Mega
@@ -216,6 +242,12 @@ void setup(void) {
   ReadTimeDate(TimeAndDate);
   Serial.println("D&T read...");
   Serial.println(ConvertTimeDate(TimeAndDate));
+
+  if (getCalibrationRequired()) {
+    calibrateAndStore();
+  } else {
+    loadCalibration();
+  }
   Serial.println("Setup complete.....");
 }
 
@@ -232,9 +264,6 @@ void loop() {
       strEnergy[15];  //, strintensity[15], strNewCurrent[15]
   char TmpDate[3];
   // end sliders
-
-  /* Perform the calibration */
-  Calibrate();
 
   File LogFile2;
   float Temperature, Float;
