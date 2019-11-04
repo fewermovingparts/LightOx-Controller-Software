@@ -10,9 +10,9 @@
 // Not yet fixed:
 // Occasional skip on project squiggle
 // Screen upside down - there does not seem to be an easy fix
-// FTImpl.Cmd_Rotate(32768) seems to apply to bitmaps not the screen? Null files?
-// Memory stick check - partially written, but remmed out as seems to get stuck
-// with something in the serial buffer?
+// FTImpl.Cmd_Rotate(32768) seems to apply to bitmaps not the screen? Null
+// files? Memory stick check - partially written, but remmed out as seems to get
+// stuck with something in the serial buffer?
 
 #include <Arduino.h>
 
@@ -1452,8 +1452,8 @@ struct {
 // Buffer for the notepads
 struct Notepad_buffer {
   char *temp;  // The "*" makes it an indirection operator, which means it
-               // points to the address of a variable, so temp = x, points to the
-               // address of x.
+               // points to the address of a variable, so temp = x, points to
+               // the address of x.
   char notepad[MAX_FT_LINES][80];
 } Buffer;
 
