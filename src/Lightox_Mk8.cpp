@@ -37,7 +37,7 @@
 #include <stdio.h>
 #include "Adafruit_VEML6070.h"  //UV sensor
 
-enum NotepadResult { kNotepadResultQuit, kNotepadResultSave};
+enum NotepadResult { kNotepadResultQuit, kNotepadResultSave };
 // Buffer for the notepads
 #define MAX_FT_LINES 2  // Max FT_LINES allows to Display
 struct Notepad_buffer {
@@ -55,7 +55,7 @@ String ConvertTimeDate(int TimeDate[]);
 int32_t Dec2Ascii(char *pSrc, int32_t value);
 void flash_data(char *pstring, boolean Print);
 void Loadimage2ram();
-NotepadResult Notepad(const char* initialText = "\0");
+NotepadResult Notepad(const char *initialText = "\0");
 void ReadTimeDate(int TimeDate[]);
 void RTC_init();
 void SetTimeDate(int d, int mo, int y, int h, int mi, int s);
@@ -262,6 +262,17 @@ void setup(void) {
 }
 
 const uint32_t kColourPrimary = 0x2A5673 + 0x001000;  // dark greeny
+const uint32_t kColourSeconday = 0x6A8CA5;            // lighter
+const uint32_t kColourLight = 0xD2D8E1;
+
+static int32_t minutes = 5;
+static int32_t seconds = 0;
+static int32_t time = 60;
+static int32_t irradience = 50;
+static int32_t energy = 300;
+
+enum HeldSlider { kHeldSliderTime, kHeldSliderIrradience, kHeldSliderEnergy };
+static HeldSlider heldSlider = kHeldSliderIrradience;
 
 enum DisplayScreen {
   kDisplayScreenHome = 0,
@@ -308,12 +319,12 @@ void homeScreen(uint8_t selectedTag) {
   const uint8_t kPrevExperimentTag = 12;
   FTImpl.Tag(kPrevExperimentTag);
   options = kPrevExperimentTag == selectedTag ? FT_OPT_FLAT : 0;
-  FTImpl.Cmd_Button(FT_DISPLAY_HSIZE * 3 / 4 - buttonWidth / 2, 200, buttonWidth,
-                    30, kFont, options, "Rerun experiment");
+  FTImpl.Cmd_Button(FT_DISPLAY_HSIZE * 3 / 4 - buttonWidth / 2, 200,
+                    buttonWidth, 30, kFont, options, "Rerun experiment");
 
   if (kNewExperimentTag == selectedTag) {
     setNextScreen(kDisplayScreenNewExp);
-    Screen = 3; // TODO remove once new exp screen updated
+    Screen = 3;  // TODO remove once new exp screen updated
   } else if (kPrevExperimentTag == selectedTag) {
     setNextScreen(kDisplayScreenBrowseExperiments);
   }
@@ -322,13 +333,237 @@ void homeScreen(uint8_t selectedTag) {
 void newExpScreen(uint16_t currentScreen) {
   NotepadResult result = Notepad(ProjectString);
   if (kNotepadResultSave == result) {
-    strncpy(ProjectString, Buffer.notepad[0], min(sizeof(ProjectString),sizeof(Buffer.notepad[0])));
+    strncpy(ProjectString, Buffer.notepad[0],
+            min(sizeof(ProjectString), sizeof(Buffer.notepad[0])));
     ProjectString[sizeof(ProjectString) - 1] = '\0';
     setNextScreen(kDisplayScreenExpSettings);
-  }
-  else {
+  } else {
     setNextScreen(kDisplayScreenHome);
   }
+}
+
+void drawHoldToggle(uint16_t x, uint16_t y, bool on) {
+  const char *kHoldToggleText = "\xffhold";
+  const uint16_t kHoldToggleWidth = 40;
+  FTImpl.Cmd_Toggle(x, y, kHoldToggleWidth, kFont, 0, on ? UINT16_MAX : 0,
+                    kHoldToggleText);
+}
+
+void drawSliderOrProgress(int16_t x, int16_t y, uint16_t w, uint16_t h,
+                          uint16_t val, uint16_t Range, bool isProgress) {
+  if (isProgress) {
+    FTImpl.Cmd_Progress(x, y, w, h, 0, val, Range);
+  } else {
+    FTImpl.Cmd_Slider(x, y, w, h, 0, val, Range);
+  }
+}
+
+void experimentSettingsScreen(uint8_t currentTag) {
+  FTImpl.Cmd_DLStart();
+  FTImpl.ClearColorRGB(64, 64, 64);
+  FTImpl.Clear(1, 1, 1);
+  FTImpl.TagMask(1);
+
+  const uint8_t kRunTag = 14;
+  uint16_t options = kRunTag == currentTag ? FT_OPT_FLAT : 0;
+  FTImpl.Tag(kRunTag);
+  FTImpl.Cmd_Button(423 - 47, 241 - 19, 94, 38, 26, options, "Run");
+
+  // Todo add back button, currently the global quit button is displayed
+
+  const int timeSliderMinsTag = 19;
+  const int timeSliderSecsTag = 20;
+  const int irradienceSliderTag = 21;
+  const int energySliderTag = 22;
+  const int kTimeHoldTag = 23;
+  const int kIrradienceHoldTag = 24;
+  const int kEnergyHoldTag = 25;
+  const int16_t sliderLeft = 40;
+  const int16_t sliderWidth = 300;
+  const int16_t topSliderY = 80;
+  const int16_t sliderYSpacing = 50;
+  // Slider definition and operation
+  /* Set the tracker for 3 sliders */
+  FTImpl.Cmd_Track(sliderLeft, topSliderY, sliderWidth / 2 - 20, 8,
+                   timeSliderMinsTag);  // duration in minutes
+  FTImpl.Cmd_Track(sliderLeft + sliderWidth / 2 + 20, topSliderY,
+                   sliderWidth / 2 - 20, 8,
+                   timeSliderSecsTag);  // duration in minutes
+  FTImpl.Cmd_Track(sliderLeft, topSliderY + sliderYSpacing, sliderWidth, 8,
+                   irradienceSliderTag);
+  FTImpl.Cmd_Track(sliderLeft, topSliderY + 2 * sliderYSpacing, sliderWidth, 8,
+                   energySliderTag);
+
+  int tagval = 0;
+  uint32_t TrackRegisterVal = FTImpl.Read32(REG_TRACKER);
+  tagval = TrackRegisterVal & 0xff;
+
+  int32_t sliderTrackerVal;
+
+  const int32_t kMaxIrradience = 100;  // needs units not percentage?
+
+  const int32_t kMaxMinutes = 30;
+  const int32_t kMaxSeconds = 59;
+  if (timeSliderMinsTag == tagval || timeSliderSecsTag == tagval) {
+    if (timeSliderMinsTag == tagval) {
+      sliderTrackerVal = TrackRegisterVal >> 16;  // value is 0 - 65535
+      minutes = kMaxMinutes * sliderTrackerVal / 65535;
+    } else if (timeSliderSecsTag == tagval) {
+      sliderTrackerVal = TrackRegisterVal >> 16;
+      seconds = kMaxSeconds * sliderTrackerVal / 65535;
+    }
+    if (minutes == kMaxMinutes) {
+      seconds = 0;
+    } else if (minutes == 0) {
+      seconds = max(seconds, 1);
+    }
+    time = 60 * minutes + seconds;
+    if (kHeldSliderEnergy == heldSlider) {
+      if (time == 0) {
+        irradience = kMaxIrradience + 1;
+      } else {
+        irradience = energy / time;
+      }
+      if (irradience > kMaxIrradience) {
+        irradience = kMaxIrradience;
+        time = energy / irradience;
+        minutes = time / 60;
+        seconds = time - 60 * minutes;
+      } else if (irradience < 1) {
+        irradience = 1;
+        time = energy / irradience;
+        minutes = time / 60;
+        seconds = time - 60 * minutes;
+      }
+    } else {
+      energy = irradience * time;
+    }
+  } else if (irradienceSliderTag == tagval) {
+    sliderTrackerVal = TrackRegisterVal >> 16;  // value is 0 - 65535
+    irradience = kMaxIrradience * sliderTrackerVal / 65535;
+    irradience = max(irradience, 1);
+
+    if (kHeldSliderEnergy == heldSlider) {
+      if (irradience == 0) {
+        time = 60 * kMaxMinutes + 1;
+      } else {
+        time = energy / irradience;
+      }
+      if (time > 60 * kMaxMinutes) {
+        time = 60 * kMaxMinutes;
+        irradience = energy / time;
+      } else if (time < 1) {
+        time = 1;
+        irradience = energy / time;
+      }
+      minutes = time / 60;
+      seconds = time - 60 * minutes;
+    } else {
+      energy = irradience * time;
+    }
+  } else if (energySliderTag == tagval) {
+    sliderTrackerVal = TrackRegisterVal >> 16;  // value is 0 - 65535
+    energy = (kMaxMinutes * 60 * kMaxIrradience) / 16 * sliderTrackerVal / (65535 / 16); // TODO check as max minutes and max irradience change
+    energy = max(energy, 1);
+    if (kHeldSliderIrradience == heldSlider) {
+      if (irradience != 0) {
+        time = energy / irradience;
+      } else if (energy == 0) {
+        time = 0;
+      }
+      if (time > 60 * kMaxMinutes) {
+        time = 60 * kMaxMinutes;
+        energy = time * irradience;
+      } else if (time < 1) {
+        time = 1;
+        energy = time * irradience;
+      }
+      minutes = time / 60;
+      seconds = time - 60 * minutes;
+    } else if (time != 0) {
+      irradience = energy / time;
+      if (irradience > kMaxIrradience) {
+        irradience = kMaxIrradience;
+        energy = irradience * time;
+      } else if (irradience < 1) {
+        irradience = 1;
+        energy = irradience * time;
+      }
+    }
+  }
+
+  switch (currentTag) {
+    case kIrradienceHoldTag:
+      heldSlider = kHeldSliderIrradience;
+      break;
+    case kEnergyHoldTag:
+      heldSlider = kHeldSliderEnergy;
+      break;
+    case kTimeHoldTag:
+      heldSlider = kHeldSliderTime;
+      break;
+    default:
+      break;
+  }
+
+  const float kFullIrrandiencePowerPerArea = 60;
+
+  const uint16_t sliderHeight = 15;
+
+  // ColorRGB is active part of slider
+  // FGColor is slider handle
+  // BGColor is inactive part of slider
+  FTImpl.ColorRGB(kColourSeconday);
+  FTImpl.Cmd_FGColor(kColourPrimary);
+  FTImpl.Cmd_BGColor(kColourLight);
+  FTImpl.Tag(timeSliderMinsTag);
+  drawSliderOrProgress(sliderLeft, topSliderY, sliderWidth / 2 - 20,
+                       sliderHeight, minutes, kMaxMinutes,
+                       heldSlider == kHeldSliderTime);
+  FTImpl.Tag(timeSliderSecsTag);
+  drawSliderOrProgress(sliderLeft + sliderWidth / 2 + 20, topSliderY,
+                       sliderWidth / 2 - 20, sliderHeight, seconds, kMaxSeconds,
+                       heldSlider == kHeldSliderTime);
+  FTImpl.Tag(kTimeHoldTag);
+  drawHoldToggle(sliderLeft + sliderWidth + 60, topSliderY,
+                 heldSlider == kHeldSliderTime);
+
+  // TODO do zero values make sense...?
+  FTImpl.Tag(irradienceSliderTag);
+  drawSliderOrProgress(sliderLeft, topSliderY + sliderYSpacing, sliderWidth,
+                       sliderHeight, irradience, kMaxIrradience,
+                       heldSlider == kHeldSliderIrradience);
+  FTImpl.Tag(kIrradienceHoldTag);
+  drawHoldToggle(sliderLeft + sliderWidth + 60, topSliderY + sliderYSpacing,
+                 heldSlider == kHeldSliderIrradience);
+
+  FTImpl.Tag(energySliderTag);
+  drawSliderOrProgress(sliderLeft, topSliderY + 2 * sliderYSpacing, sliderWidth,
+                       sliderHeight, energy / 60, kMaxMinutes * kMaxIrradience,
+                       heldSlider == kHeldSliderEnergy);
+  FTImpl.Tag(kEnergyHoldTag);
+  drawHoldToggle(sliderLeft + sliderWidth + 60, topSliderY + 2 * sliderYSpacing,
+                 heldSlider == kHeldSliderEnergy);
+
+  FTImpl.TagMask(0);
+  FTImpl.ColorRGB(0xff, 0xff, 0xff);
+  FTImpl.Cmd_Text(60, 20, kFont, FT_OPT_CENTERY, ProjectString);
+
+  char labelBuffer[30];
+  sprintf(labelBuffer, "Duration: %2ld minutes", minutes);
+  FTImpl.Cmd_Text(sliderLeft, topSliderY - 20, kFont, FT_OPT_CENTERY,
+                  labelBuffer);
+  sprintf(labelBuffer, "%2ld seconds", seconds);
+  FTImpl.Cmd_Text(sliderLeft + sliderWidth / 2 + 20, topSliderY - 20, kFont,
+                  FT_OPT_CENTERY, labelBuffer);
+
+  sprintf(labelBuffer, "Irradiance: %3ld mW/cm^2", irradience);
+  FTImpl.Cmd_Text(sliderLeft, topSliderY + sliderYSpacing - 20, kFont,
+                  FT_OPT_CENTERY, labelBuffer);
+
+  sprintf(labelBuffer, "Energy: %7ld mJ/cm^2", energy);
+  FTImpl.Cmd_Text(sliderLeft, topSliderY + 2 * sliderYSpacing - 20, kFont,
+                  FT_OPT_CENTERY, labelBuffer);
 }
 
 void loop() {
@@ -355,7 +590,7 @@ void loop() {
   char checkfileexist[80];
 
   Screen = 0;
-  setNextScreen(kDisplayScreenHome);
+  setNextScreen(kDisplayScreenExpSettings);
 
   while (1) {
     FTImpl.TagMask(1);
@@ -365,10 +600,13 @@ void loop() {
 
     if (kDisplayScreenHome == currentScreen) {
       homeScreen(tagval);
-      tagval = 0; // TODO remove, avoids below code detecting a press
-    } else if (kDisplayScreenNewExp == currentScreen){
+      tagval = 0;  // TODO remove, avoids below code detecting a press
+    } else if (kDisplayScreenNewExp == currentScreen) {
       newExpScreen(tagval);
-      tagval = 0; // TODO remove, avoids below code detecting a press
+      tagval = 0;  // TODO remove, avoids below code detecting a press
+    } else if (kDisplayScreenExpSettings == currentScreen) {
+      experimentSettingsScreen(tagval);
+      tagval = 0;  // TODO remove
     } else {
       if (Screen !=
           0)  // On all other screen bottom left button is
@@ -496,79 +734,6 @@ void loop() {
             TimeAndDate[TimePointer[TimeDigit]] = TimeMax[TimeDigit];
           delay(200);
         }
-      }
-
-      if (Screen ==
-          4)  // Time Intensity
-              // Energy///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-      {
-        // assign tag value 14 to the run button
-        tagoption = 0;  // no touch is default 3d effect and touch is flat
-        if (14 == tagval) tagoption = FT_OPT_FLAT; FTImpl.Tag(14);
-        FTImpl.Cmd_Button(423 - 47, 241 - 19, 94, 38, 26, tagoption, "Run");
-
-        // Slider definition and operation
-        // Set the tracker for 3 sliders
-        FTImpl.Cmd_Track(40, 40, 180, 8, 19);   // duration in minutes
-        FTImpl.Cmd_Track(260, 40, 180, 8, 20);  // duration in seconds
-        FTImpl.Cmd_Track(40, 100, 400, 8, 21);  // intensity %
-
-        tagval = 0;
-        TrackRegisterVal = FTImpl.Read32(REG_TRACKER);
-        tagval = TrackRegisterVal & 0xff;
-        if (0 != tagval) {
-          if (19 == tagval) {
-            durationM = TrackRegisterVal >> 16;  // value is 0 - 65535
-          }
-          if (20 == tagval) {
-            durationS = TrackRegisterVal >> 16;  // value is 0 - 65535
-          }
-          if (21 == tagval) {
-            NewIntensity = TrackRegisterVal >> 16;  // value is 0 - 65535
-          }
-        }
-
-        tmpduration = (int32_t)durationM * 60 * 60 / 65535;
-        tmpduration +=
-            (int32_t)durationS * 59 / 65535;  // value is 0 - 3659 seconds
-        Time = tmpduration;
-
-        Intensity = (int32_t)NewIntensity * 100 / 65535;  // value is 0 - 100%
-
-        Energy = (float)Time * (float)EnergyDensity / 1000.0 * (float)Intensity
-        / 100.0;
-
-        // Draw slider with 3d effect
-        FTImpl.ColorRGB(255, 32, 32);
-        // FTImpl.Cmd_FGColor(0x00a000);
-        FTImpl.Cmd_BGColor(0x000000);
-        FTImpl.Tag(19);
-        FTImpl.Cmd_Slider(40, 40, 180, 20, 0, durationM, 65535);
-        FTImpl.Tag(20);
-        FTImpl.Cmd_Slider(260, 40, 180, 20, 0, durationS, 65535);
-        FTImpl.Tag(21);
-        FTImpl.Cmd_Slider(40, 100, 400, 20, 0, NewIntensity, 65535);
-
-        FTImpl.TagMask(0);
-        FTImpl.ColorRGB(0xff, 0xff, 0xff);
-        FTImpl.Cmd_Text(60, 20, 26, FT_OPT_CENTER, "Duration");
-        strduration[0] = '\0';
-        Dec2Ascii(strduration, tmpduration);
-        strcat(strduration, " seconds");
-        FTImpl.Cmd_Text(200, 20, 26, FT_OPT_CENTER, strduration);
-        FTImpl.Cmd_Text(60, 80, 26, FT_OPT_CENTER, "Intensity");
-        // strintensity[0] = '\0';
-        // Dec2Ascii(strintensity,tmpintensity);
-        // strcat(strintensity,"%");
-        sprintf(OutputValue, "%03i", Intensity);
-        OutputValue[3] = '%';
-        OutputValue[4] = '\0';
-        FTImpl.Cmd_Text(200, 80, 26, FT_OPT_CENTER, OutputValue);
-        strEnergy[0] = '\0';
-        Dec2Ascii(strEnergy, Energy);
-        FTImpl.Cmd_Text(240, 160, 28, FT_OPT_CENTER, "Energy (mW/cm2)");
-        FTImpl.Cmd_Text(240, 190, 28, FT_OPT_CENTER, strEnergy);
-        delay(10);
       }
 
       if (Screen ==
@@ -1456,7 +1621,7 @@ String ConvertTimeDate(int TimeDate[]) {
 
 #define ON 1
 #define OFF 0
-#define Font 27         // Font Size
+#define Font 27  // Font Size
 
 #define SPECIAL_FUN 251
 #define BACK_SPACE 251   // Back space
@@ -1473,8 +1638,6 @@ struct {
   uint8_t Numeric : 1;
   uint8_t Exit : 1;
 } Flag;
-
-
 
 static uint8_t sk = 0;
 /********API to return the assigned TAG value when penup,for the
@@ -1530,7 +1693,7 @@ uint8_t Ft_Gpu_Rom_Font_WH(uint8_t Char, uint8_t font) {
 }
 
 // Notepad buffer
-NotepadResult Notepad(const char* initialText) {
+NotepadResult Notepad(const char *initialText) {
   /*local variables*/
   uint8_t Line = 0;
   uint16_t Disp_pos = 0, But_opt;
@@ -1545,14 +1708,12 @@ NotepadResult Notepad(const char* initialText) {
     memset(&Buffer.notepad[tval], '\0',
            sizeof(Buffer.notepad[tval]));  // set all of buffer to be null
 
-  for (i = 0; i < strlen(initialText);
-        i++)  // load in the Project Description
+  for (i = 0; i < strlen(initialText); i++)  // load in the Project Description
   {
     Buffer.notepad[0][i] = initialText[i];
   }
   noofchars = i;
   i = 0;
-
 
   /*intial setup*/
   Line = 0;                  // Starting line
