@@ -279,6 +279,7 @@ enum DisplayScreen {
   kDisplayScreenNewExp,
   kDisplayScreenBrowseExperiments,
   kDisplayScreenExpSettings,
+  kDisplayScreenRun,
 };
 bool screenJustSelected = true;
 DisplayScreen currentScreen = kDisplayScreenHome;
@@ -502,6 +503,9 @@ void experimentSettingsScreen(uint8_t currentTag) {
     case kTimeHoldTag:
       heldSlider = kHeldSliderTime;
       break;
+    case kRunTag:
+      setNextScreen(kDisplayScreenRun);
+      break;
     default:
       break;
   }
@@ -566,28 +570,271 @@ void experimentSettingsScreen(uint8_t currentTag) {
                   FT_OPT_CENTERY, labelBuffer);
 }
 
+void runScreen(uint8_t currentTag)
+{
+  FTImpl.Display();  // added as first go at getting screen 6 to work
+  FTImpl.Cmd_Swap();
+  FTImpl.Finish();
+  Serial.println(SetCurrent);
+  ReadTimeDate(TimeAndDate);
+  Serial.println(ConvertTimeDate(TimeAndDate));
+
+  do {
+    LogRef++;  // increment logfile count and look for next free file
+    LogFile[11] = char(48 + int(LogRef / 100));
+    LogFile[12] = char(48 + int((LogRef - int(LogRef / 100) * 100) / 10));
+    LogFile[13] = char(48 + int(LogRef - int(LogRef / 10) * 10));
+    Serial.println(LogFile);
+  } while (sd.exists(LogFile));
+
+  File LogFile2 = sd.open(LogFile, FILE_WRITE);
+  if (!LogFile2) {  // Open and ensure file created o.k.
+    Serial.print(F("File error"));
+  }
+  LogFile2.println(
+      "Deliberately left blank");  // Sometimes lose first
+                                    // line, so make it a dummy.
+  LogFile2.print("Test ID: ");     // Record project data
+  LogFile2.println(ProjectString);
+  LogFile2.print("Duration (s): ");
+  LogFile2.print(Time);
+  LogFile2.print(", ");
+  LogFile2.print("Selected Intensity (%): ");
+  LogFile2.print(Intensity);
+  LogFile2.print(", ");
+  LogFile2.print("Selected Current (%): ");
+  LogFile2.println(Current);
+  LogFile2.print("Calculation power density (uW/mm2): ");
+  LogFile2.println(EnergyDensity);
+  LogFile2.print("Energy applied (mW/cm2): ");
+  LogFile2.println(Energy);
+  LogFile2.print("Start Date/Time: ");
+  LogFile2.println(ConvertTimeDate(TimeAndDate));
+  LogFile2.println("Time (s), UV (relative), Temperature (Deg C)");
+
+  if (digitalRead(LID))  // Make sure lid is closed before start
+  {
+    FTImpl
+        .Cmd_DLStart();  // start new display list - ends with
+                          // DL_swap///////////////////////////////////////////////////////////////////////////////////////
+    FTImpl.Begin(FT_BITMAPS);      // Start a new graphics primitive
+    FTImpl.Vertex2ii(0, 0, 0, 0);  // Draw primitive
+    FTImpl.BitmapHandle(0);
+    FTImpl.BitmapSource(0);
+    FTImpl.BitmapLayout(FT_RGB565, 480L * 2, 272);
+    FTImpl.BitmapSize(FT_NEAREST, FT_BORDER, FT_BORDER, 480, 272);
+    FTImpl.ColorRGB(0xff, 0xff, 0xff);
+    FTImpl.Cmd_Text(230, 80, 31, FT_OPT_CENTER, "Close Lid");
+    Serial.println("Close Lid");
+    FTImpl.Cmd_Spinner(240, 150, 0, 0);
+    FTImpl.Display();
+    FTImpl.Cmd_Swap();
+    FTImpl.Finish();
+    do {
+      delay(100);
+    } while (digitalRead(LID));
+  }
+  analogWrite(ADM, 0);
+  analogWrite(PWM, 5);  // LEDs power setting - see Mk6 - starting with
+                        // PWM = 0 causes LED's to fail.
+  delay(100);
+  digitalWrite(FAN, HIGH);
+  delay(1000);  // to make sure current setting voltage R-C circuit is
+                // charged
+  analogWrite(ADM, SetCurrent);  // turn on LEDs (slowly)
+  FTImpl
+      .Cmd_DLStart();  // start new display list - ends with
+                        // DL_swap///////////////////////////////////////////////////////////////////////////////////////
+  FTImpl.Begin(FT_BITMAPS);      // Start a new graphics primitive
+  FTImpl.Vertex2ii(0, 0, 0, 0);  // Draw primitive
+  FTImpl.BitmapHandle(0);
+  FTImpl.BitmapSource(0);
+  FTImpl.BitmapLayout(FT_RGB565, 480L * 2, 272);
+  FTImpl.BitmapSize(FT_NEAREST, FT_BORDER, FT_BORDER, 480, 272);
+  FTImpl.ColorRGB(0xff, 0xff, 0xff);
+  FTImpl.Cmd_Text(230, 80, 28, FT_OPT_CENTER,
+                  "Starting, please wait....");
+  FTImpl.Cmd_Spinner(240, 150, 0, 0);
+  FTImpl.Display();
+  FTImpl.Cmd_Swap();
+  FTImpl.Finish();
+  delay(10000);
+  analogWrite(PWM, int((float)Intensity * 2.55));  // LEDs power setting
+
+  msTime = millis();
+
+  OldiTime = -1;
+  uint8_t tagval = 42;
+  LidOpen = false;
+  uvPrintVal[0] = '\0';
+
+  do {
+    if (!LidOpen) iTime = Time - int((millis() - msTime) / 1000);
+    TimeString[0] = char(48 + int(iTime / 600));
+    TimeString[1] = char(48 + int(iTime / 60) - 10 * int(iTime / 600));
+    TimeString[3] = char(48 + int((iTime - 60 * int(iTime / 60)) / 10));
+    TimeString[4] = char(48 + iTime - 60 * int(iTime / 60) -
+                          10 * int((iTime - 60 * int(iTime / 60)) / 10));
+    // Serial.println(TimeString);
+    FTImpl
+        .Cmd_DLStart();  // start new display list - ends with
+                          // DL_swap///////////////////////////////////////////////////////////////////////////////////////
+    FTImpl.Begin(FT_BITMAPS);      // Start a new graphics primitive
+    FTImpl.Vertex2ii(0, 0, 0, 0);  // Draw primitive
+    FTImpl.BitmapHandle(0);
+    FTImpl.BitmapSource(0);
+    FTImpl.BitmapLayout(FT_RGB565, 480L * 2, 272);
+    FTImpl.BitmapSize(FT_NEAREST, FT_BORDER, FT_BORDER, 480, 272);
+    FTImpl.ColorRGB(0xff, 0xff, 0xff);
+    FTImpl.Cmd_Text(230, 60, 31, FT_OPT_CENTER, TimeString);
+    FTImpl.Cmd_Text(230, 10, 28, FT_OPT_CENTER, ProjectString);
+    uint16_t tagoption = 0;  // no touch is default 3d effect and touch is flat
+                    // effect
+    if (13 == tagval) tagoption = FT_OPT_FLAT;
+    FTImpl.Tag(13);
+    FTImpl.Cmd_Button(63 - 47, 241 - 19, 94, 38, 26, tagoption, "Abort");
+
+    if (!LidOpen) {
+      sprintf(OutputValue, "%04i", Time);
+      FTImpl.Cmd_Text(300, 90, 28, FT_OPT_CENTERX, "Duration (s):");
+      FTImpl.Cmd_Text(450, 90, 28, FT_OPT_RIGHTX, OutputValue);
+      sprintf(OutputValue, "%03i", Intensity);
+      FTImpl.Cmd_Text(300, 120, 28, FT_OPT_CENTERX, "Intensity (%):");
+      FTImpl.Cmd_Text(450, 120, 28, FT_OPT_RIGHTX, OutputValue);
+      sprintf(OutputValue, "%03i", Current);
+      FTImpl.Cmd_Text(300, 150, 28, FT_OPT_CENTERX, "Current (%):");
+      FTImpl.Cmd_Text(450, 150, 28, FT_OPT_RIGHTX, OutputValue);
+      sprintf(OutputValue, "%03i", EnergyDensity);
+      FTImpl.Cmd_Text(300, 180, 28, FT_OPT_CENTERX, "Energy");
+      FTImpl.Cmd_Text(300, 210, 28, FT_OPT_CENTERX, "Density (uW/mm2):");
+      FTImpl.Cmd_Text(450, 210, 28, FT_OPT_RIGHTX, OutputValue);
+    }
+
+    if (digitalRead(LID) && !LidOpen)  // lid just opened
+    {
+      LidOpen = true;
+      msTimeLid =
+          millis();  // need to keep a record of how long lid is open for
+      analogWrite(PWM, 0);
+      // Serial.println("Close Lid");
+      // analogWrite(ADM,0);
+      // analogWrite(PWM,int((float)Intensity*2.55));              //reset
+      // start case
+    }
+    if (LidOpen) {
+      FTImpl.Cmd_Text(230, 120, 31, FT_OPT_CENTER, "Close Lid");
+    }
+    if (LidOpen && !digitalRead(LID))  // lid was open, but now closed.
+    {
+      analogWrite(PWM, int((float)Intensity * 2.55));
+      msTime = msTime + (millis() - msTimeLid);  // correct the time
+      LidOpen = false;
+    }
+    if (13 == tagval)  // abort pressed.
+    {
+      Serial.println("Abort hit");
+      LogFile2.println("Abort hit");
+      LidOpen = false;
+      goto EscapeNestedLoops;
+    }
+    if (OldiTime != iTime)  // into a new second, so save results
+    {
+      OldiTime = iTime;
+      Serial.print("Time = ");
+      Serial.print(Time - iTime);
+      LogFile2.print(iTime);
+      Serial.print(", uv = ");
+      LogFile2.print(", ");
+      uvValue = uv.readUV();
+      sprintf(uvPrintVal, "%05i",
+              uvValue);  //%0 left pads the number with zeros, 5 = width,
+                          // i = signed decimal integer
+      for (i = 0; i < 5; i++) {
+        uvPrint[i + 5] = uvPrintVal[i];
+      }
+      Serial.print(uvValue);
+      LogFile2.print(uvValue);
+      Serial.print(", t = ");
+      LogFile2.print(", ");
+      i = 0;
+      do  // fiddle to sort out SPI clash
+      {
+        i++;
+        SPI.end();
+      } while ((SPCR & 64) == 64);
+      // Serial.println(i);
+      delay(10);
+      sensors.requestTemperaturesByAddress(
+          DallasAddress);  // can take up to 750ms to get temperature?
+      float Temperature = sensors.getTempC(DallasAddress);
+      if (Temperature != -127) {
+        Serial.println(Temperature);
+        sprintf(tempPrintValA, "%03i", int(Temperature));
+        sprintf(tempPrintValB, "%01i",
+                int((Temperature - int(Temperature)) * 10));
+        for (it = 0; it < 3; it++) {
+          tempPrint[it + 7] = tempPrintValA[it];
+        }
+        tempPrint[11] = tempPrintValB[0];
+      } else {
+        Serial.println("Read Error");
+      }
+      LogFile2.println(Temperature);
+      // You can have more than one IC on the same bus.
+      // 0 refers to the first IC on the wire
+      do {
+        i--;
+        SPI.begin();
+      } while (i > 0);
+      Serial.println(iTime);
+    }
+    if (!LidOpen) {
+      FTImpl.Cmd_Text(100, 160, 29, FT_OPT_CENTER, tempPrint);
+      FTImpl.Cmd_Text(100, 120, 29, FT_OPT_CENTER, uvPrint);
+    }
+    FTImpl.Display();
+    FTImpl.Cmd_Swap();
+    FTImpl.Finish();
+    FTImpl.TagMask(1);
+    sTagXY sTagxy;
+    FTImpl.GetTagXY(sTagxy);
+    tagval = sTagxy.tag;
+  } while (iTime > 0);  // end of do loop
+
+  analogWrite(PWM, 0);
+
+EscapeNestedLoops:
+  Serial.println(iTime);
+  digitalWrite(FAN, LOW);
+  analogWrite(ADM, 0);
+  Serial.print("End Date/Time: ");
+  LogFile2.print("End Date/Time: ");
+  ReadTimeDate(TimeAndDate);
+  LogFile2.println(ConvertTimeDate(TimeAndDate));
+  Serial.println(ConvertTimeDate(TimeAndDate));
+  LogFile2.close();
+  setNextScreen(kDisplayScreenHome);
+}
+
 void loop() {
   // newscreen
   sTagXY sTagxy;
   int32_t tagval, tagoption = 0, datetag = 25;
   // for sliders
   uint32_t TrackRegisterVal = 0;
-  uint32_t durationS = 0, durationM = 5462, NewIntensity = 65535;
-  int32_t tmpduration, tmpNewEnergyDensity,
+  int32_t tmpNewEnergyDensity,
       tmpNewCurrent = 100;  //, tmpintensity = 100
-  char strduration[15], strNewEnergyDensity[15],
-      strEnergy[15];  //, strintensity[15], strNewCurrent[15]
+  char strNewEnergyDensity[15];
   char TmpDate[3];
   // end sliders
 
-  File LogFile2;
-  float Temperature, Float;
+  File LogFile2;  
+  float Float;
   char sdlogbuffer[80], sdlog;
   int logpointer = 0, logcopycount = 0;
   char FlashFile[27] = {'$', 'W', 'R', 'I', 'T', 'E', ' ', 'L', 'O', 'G',
                         '0', '0', '0', '0', '0', '.', 'C', 'S', 'V'};
   bool DateRead = false;
-  char checkfileexist[80];
 
   Screen = 0;
   setNextScreen(kDisplayScreenExpSettings);
@@ -607,6 +854,9 @@ void loop() {
     } else if (kDisplayScreenExpSettings == currentScreen) {
       experimentSettingsScreen(tagval);
       tagval = 0;  // TODO remove
+    } else if (kDisplayScreenRun == currentScreen) {
+      runScreen(tagval);
+      tagval = 0; //TODO remove
     } else {
       if (Screen !=
           0)  // On all other screen bottom left button is
@@ -802,253 +1052,6 @@ void loop() {
         // FTImpl.DLEnd();
         // FTImpl.Finish();
         delay(10);
-      }
-
-      if (Screen ==
-          6)  // Run
-              // ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-      {
-        FTImpl.Display();  // added as first go at getting screen 6 to work
-        FTImpl.Cmd_Swap();
-        FTImpl.Finish();
-        Serial.println(SetCurrent);
-        ReadTimeDate(TimeAndDate);
-        Serial.println(ConvertTimeDate(TimeAndDate));
-
-        do {
-          LogRef++;  // increment logfile count and look for next free file
-          LogFile[11] = char(48 + int(LogRef / 100));
-          LogFile[12] = char(48 + int((LogRef - int(LogRef / 100) * 100) / 10));
-          LogFile[13] = char(48 + int(LogRef - int(LogRef / 10) * 10));
-          Serial.println(LogFile);
-        } while (sd.exists(LogFile));
-
-        if ((LogFile2 = sd.open(LogFile, FILE_WRITE)) ==
-            NULL) {  // Open and ensure file created o.k.
-          Serial.print(F("File error"));
-        }
-        LogFile2.println(
-            "Deliberately left blank");  // Sometimes lose first
-                                         // line, so make it a dummy.
-        LogFile2.print("Test ID: ");     // Record project data
-        LogFile2.println(ProjectString);
-        LogFile2.print("Duration (s): ");
-        LogFile2.print(Time);
-        LogFile2.print(", ");
-        LogFile2.print("Selected Intensity (%): ");
-        LogFile2.print(Intensity);
-        LogFile2.print(", ");
-        LogFile2.print("Selected Current (%): ");
-        LogFile2.println(Current);
-        LogFile2.print("Calculation power density (uW/mm2): ");
-        LogFile2.println(EnergyDensity);
-        LogFile2.print("Energy applied (mW/cm2): ");
-        LogFile2.println(Energy);
-        LogFile2.print("Start Date/Time: ");
-        LogFile2.println(ConvertTimeDate(TimeAndDate));
-        LogFile2.println("Time (s), UV (relative), Temperature (Deg C)");
-
-        if (digitalRead(LID))  // Make sure lid is closed before start
-        {
-          FTImpl
-              .Cmd_DLStart();  // start new display list - ends with
-                               // DL_swap///////////////////////////////////////////////////////////////////////////////////////
-          FTImpl.Begin(FT_BITMAPS);      // Start a new graphics primitive
-          FTImpl.Vertex2ii(0, 0, 0, 0);  // Draw primitive
-          FTImpl.BitmapHandle(0);
-          FTImpl.BitmapSource(0);
-          FTImpl.BitmapLayout(FT_RGB565, 480L * 2, 272);
-          FTImpl.BitmapSize(FT_NEAREST, FT_BORDER, FT_BORDER, 480, 272);
-          FTImpl.ColorRGB(0xff, 0xff, 0xff);
-          FTImpl.Cmd_Text(230, 80, 31, FT_OPT_CENTER, "Close Lid");
-          Serial.println("Close Lid");
-          FTImpl.Cmd_Spinner(240, 150, 0, 0);
-          FTImpl.Display();
-          FTImpl.Cmd_Swap();
-          FTImpl.Finish();
-          do {
-            delay(100);
-          } while (digitalRead(LID));
-        }
-        analogWrite(ADM, 0);
-        analogWrite(PWM, 5);  // LEDs power setting - see Mk6 - starting with
-                              // PWM = 0 causes LED's to fail.
-        delay(100);
-        digitalWrite(FAN, HIGH);
-        delay(1000);  // to make sure current setting voltage R-C circuit is
-                      // charged
-        analogWrite(ADM, SetCurrent);  // turn on LEDs (slowly)
-        FTImpl
-            .Cmd_DLStart();  // start new display list - ends with
-                             // DL_swap///////////////////////////////////////////////////////////////////////////////////////
-        FTImpl.Begin(FT_BITMAPS);      // Start a new graphics primitive
-        FTImpl.Vertex2ii(0, 0, 0, 0);  // Draw primitive
-        FTImpl.BitmapHandle(0);
-        FTImpl.BitmapSource(0);
-        FTImpl.BitmapLayout(FT_RGB565, 480L * 2, 272);
-        FTImpl.BitmapSize(FT_NEAREST, FT_BORDER, FT_BORDER, 480, 272);
-        FTImpl.ColorRGB(0xff, 0xff, 0xff);
-        FTImpl.Cmd_Text(230, 80, 28, FT_OPT_CENTER,
-                        "Starting, please wait....");
-        FTImpl.Cmd_Spinner(240, 150, 0, 0);
-        FTImpl.Display();
-        FTImpl.Cmd_Swap();
-        FTImpl.Finish();
-        delay(10000);
-        analogWrite(PWM, int((float)Intensity * 2.55));  // LEDs power setting
-
-        msTime = millis();
-
-        OldiTime = -1;
-        tagval = 42;
-        LidOpen = false;
-        uvPrintVal[0] = '\0';
-
-        do {
-          if (!LidOpen) iTime = Time - int((millis() - msTime) / 1000);
-          TimeString[0] = char(48 + int(iTime / 600));
-          TimeString[1] = char(48 + int(iTime / 60) - 10 * int(iTime / 600));
-          TimeString[3] = char(48 + int((iTime - 60 * int(iTime / 60)) / 10));
-          TimeString[4] = char(48 + iTime - 60 * int(iTime / 60) -
-                               10 * int((iTime - 60 * int(iTime / 60)) / 10));
-          // Serial.println(TimeString);
-          FTImpl
-              .Cmd_DLStart();  // start new display list - ends with
-                               // DL_swap///////////////////////////////////////////////////////////////////////////////////////
-          FTImpl.Begin(FT_BITMAPS);      // Start a new graphics primitive
-          FTImpl.Vertex2ii(0, 0, 0, 0);  // Draw primitive
-          FTImpl.BitmapHandle(0);
-          FTImpl.BitmapSource(0);
-          FTImpl.BitmapLayout(FT_RGB565, 480L * 2, 272);
-          FTImpl.BitmapSize(FT_NEAREST, FT_BORDER, FT_BORDER, 480, 272);
-          FTImpl.ColorRGB(0xff, 0xff, 0xff);
-          FTImpl.Cmd_Text(230, 60, 31, FT_OPT_CENTER, TimeString);
-          FTImpl.Cmd_Text(230, 10, 28, FT_OPT_CENTER, ProjectString);
-          tagoption = 0;  // no touch is default 3d effect and touch is flat
-                          // effect
-          if (13 == tagval) tagoption = FT_OPT_FLAT;
-          FTImpl.Tag(13);
-          FTImpl.Cmd_Button(63 - 47, 241 - 19, 94, 38, 26, tagoption, "Abort");
-
-          if (!LidOpen) {
-            sprintf(OutputValue, "%04i", Time);
-            FTImpl.Cmd_Text(300, 90, 28, FT_OPT_CENTERX, "Duration (s):");
-            FTImpl.Cmd_Text(450, 90, 28, FT_OPT_RIGHTX, OutputValue);
-            sprintf(OutputValue, "%03i", Intensity);
-            FTImpl.Cmd_Text(300, 120, 28, FT_OPT_CENTERX, "Intensity (%):");
-            FTImpl.Cmd_Text(450, 120, 28, FT_OPT_RIGHTX, OutputValue);
-            sprintf(OutputValue, "%03i", Current);
-            FTImpl.Cmd_Text(300, 150, 28, FT_OPT_CENTERX, "Current (%):");
-            FTImpl.Cmd_Text(450, 150, 28, FT_OPT_RIGHTX, OutputValue);
-            sprintf(OutputValue, "%03i", EnergyDensity);
-            FTImpl.Cmd_Text(300, 180, 28, FT_OPT_CENTERX, "Energy");
-            FTImpl.Cmd_Text(300, 210, 28, FT_OPT_CENTERX, "Density (uW/mm2):");
-            FTImpl.Cmd_Text(450, 210, 28, FT_OPT_RIGHTX, OutputValue);
-          }
-
-          if (digitalRead(LID) && !LidOpen)  // lid just opened
-          {
-            LidOpen = true;
-            msTimeLid =
-                millis();  // need to keep a record of how long lid is open for
-            analogWrite(PWM, 0);
-            // Serial.println("Close Lid");
-            // analogWrite(ADM,0);
-            // analogWrite(PWM,int((float)Intensity*2.55));              //reset
-            // start case
-          }
-          if (LidOpen) {
-            FTImpl.Cmd_Text(230, 120, 31, FT_OPT_CENTER, "Close Lid");
-          }
-          if (LidOpen && !digitalRead(LID))  // lid was open, but now closed.
-          {
-            analogWrite(PWM, int((float)Intensity * 2.55));
-            msTime = msTime + (millis() - msTimeLid);  // correct the time
-            LidOpen = false;
-          }
-          if (13 == tagval)  // abort pressed.
-          {
-            Serial.println("Abort hit");
-            LogFile2.println("Abort hit");
-            LidOpen = false;
-            goto EscapeNestedLoops;
-          }
-          if (OldiTime != iTime)  // into a new second, so save results
-          {
-            OldiTime = iTime;
-            Serial.print("Time = ");
-            Serial.print(Time - iTime);
-            LogFile2.print(iTime);
-            Serial.print(", uv = ");
-            LogFile2.print(", ");
-            uvValue = uv.readUV();
-            sprintf(uvPrintVal, "%05i",
-                    uvValue);  //%0 left pads the number with zeros, 5 = width,
-                               // i = signed decimal integer
-            for (i = 0; i < 5; i++) {
-              uvPrint[i + 5] = uvPrintVal[i];
-            }
-            Serial.print(uvValue);
-            LogFile2.print(uvValue);
-            Serial.print(", t = ");
-            LogFile2.print(", ");
-            i = 0;
-            do  // fiddle to sort out SPI clash
-            {
-              i++;
-              SPI.end();
-            } while ((SPCR & 64) == 64);
-            // Serial.println(i);
-            delay(10);
-            sensors.requestTemperaturesByAddress(
-                DallasAddress);  // can take up to 750ms to get temperature?
-            Temperature = sensors.getTempC(DallasAddress);
-            if (Temperature != -127) {
-              Serial.println(Temperature);
-              sprintf(tempPrintValA, "%03i", int(Temperature));
-              sprintf(tempPrintValB, "%01i",
-                      int((Temperature - int(Temperature)) * 10));
-              for (it = 0; it < 3; it++) {
-                tempPrint[it + 7] = tempPrintValA[it];
-              }
-              tempPrint[11] = tempPrintValB[0];
-            } else {
-              Serial.println("Read Error");
-            }
-            LogFile2.println(Temperature);
-            // You can have more than one IC on the same bus.
-            // 0 refers to the first IC on the wire
-            do {
-              i--;
-              SPI.begin();
-            } while (i > 0);
-            Serial.println(iTime);
-          }
-          if (!LidOpen) {
-            FTImpl.Cmd_Text(100, 160, 29, FT_OPT_CENTER, tempPrint);
-            FTImpl.Cmd_Text(100, 120, 29, FT_OPT_CENTER, uvPrint);
-          }
-          FTImpl.Display();
-          FTImpl.Cmd_Swap();
-          FTImpl.Finish();
-          FTImpl.TagMask(1);
-          FTImpl.GetTagXY(sTagxy);
-          tagval = sTagxy.tag;
-        } while (iTime > 0);  // end of do loop
-
-        analogWrite(PWM, 0);
-
-      EscapeNestedLoops:
-        Serial.println(iTime);
-        digitalWrite(FAN, LOW);
-        analogWrite(ADM, 0);
-        Serial.print("End Date/Time: ");
-        LogFile2.print("End Date/Time: ");
-        ReadTimeDate(TimeAndDate);
-        LogFile2.println(ConvertTimeDate(TimeAndDate));
-        Serial.println(ConvertTimeDate(TimeAndDate));
-        LogFile2.close();
-        setNextScreen(kDisplayScreenHome);
       }
 
       if (Screen == 10)  // Info
