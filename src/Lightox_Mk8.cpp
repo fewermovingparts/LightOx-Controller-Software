@@ -137,7 +137,7 @@ char ProjectString[150] = {'P', 'r', 'o', 'j', 'e', 'c', 't', ' ', 'd', 'e',
                            'i', 'n', ' ', 'u', 'p', ' ', 't', 'o', ' ', '4',
                            '0', ' ', 'c', 'h', 'a', 'r', 's', '\0'};
 char LogFileName[20] = {'/', 'L', 'O', 'G', 'S', '/', 'L', 'O', 'G',
-                    '0', '0', '0', '0', '0', '.', 'C', 'S', 'V'};
+                        '0', '0', '0', '0', '0', '.', 'C', 'S', 'V'};
 int LogRef = 0, LineCount = 0;
 char LineCountString[5];
 int ProjectDigit = 9;
@@ -464,7 +464,9 @@ void experimentSettingsScreen(uint8_t currentTag) {
     }
   } else if (energySliderTag == tagval) {
     sliderTrackerVal = TrackRegisterVal >> 16;  // value is 0 - 65535
-    energy = (kMaxMinutes * 60 * kMaxIrradience) / 16 * sliderTrackerVal / (65535 / 16); // TODO check as max minutes and max irradience change
+    energy =
+        (kMaxMinutes * 60 * kMaxIrradience) / 16 * sliderTrackerVal /
+        (65535 / 16);  // TODO check as max minutes and max irradience change
     energy = max(energy, 1);
     if (kHeldSliderIrradience == heldSlider) {
       if (irradience != 0) {
@@ -570,8 +572,9 @@ void experimentSettingsScreen(uint8_t currentTag) {
                   FT_OPT_CENTERY, labelBuffer);
 }
 
-File tryOpenLogfile()
-{
+// Trys to find a numbered log file that has not been used
+// Returns the opened file or null on failure
+File tryOpenLogfile() {
   do {
     LogRef++;  // increment logfile count and look for next free file
     LogFileName[11] = char(48 + int(LogRef / 100));
@@ -587,8 +590,31 @@ File tryOpenLogfile()
   return logFile;
 }
 
-void runScreen(uint8_t currentTag)
+void startRunLog(File logFile)
 {
+  // TODO use correct variables and units
+  logFile.println("Deliberately left blank");  // Sometimes lose first
+                                                // line, so make it a dummy.
+  logFile.print("Test ID: ");                  // Record project data
+  logFile.println(ProjectString);
+  logFile.print("Duration (s): ");
+  logFile.print(Time);
+  logFile.print(", ");
+  logFile.print("Selected Intensity (%): ");
+  logFile.print(Intensity);
+  logFile.print(", ");
+  logFile.print("Selected Current (%): ");
+  logFile.println(Current);
+  logFile.print("Calculation power density (uW/mm2): ");
+  logFile.println(EnergyDensity);
+  logFile.print("Energy applied (mW/cm2): ");
+  logFile.println(Energy);
+  logFile.print("Start Date/Time: ");
+  logFile.println(ConvertTimeDate(TimeAndDate));
+  logFile.println("Time (s), UV (relative), Temperature (Deg C)");
+}
+
+void runScreen(uint8_t currentTag) {
   FTImpl.Display();  // added as first go at getting screen 6 to work
   FTImpl.Cmd_Swap();
   FTImpl.Finish();
@@ -597,32 +623,14 @@ void runScreen(uint8_t currentTag)
   Serial.println(ConvertTimeDate(TimeAndDate));
 
   File LogFile2 = tryOpenLogfile();
-  LogFile2.println(
-      "Deliberately left blank");  // Sometimes lose first
-                                    // line, so make it a dummy.
-  LogFile2.print("Test ID: ");     // Record project data
-  LogFile2.println(ProjectString);
-  LogFile2.print("Duration (s): ");
-  LogFile2.print(Time);
-  LogFile2.print(", ");
-  LogFile2.print("Selected Intensity (%): ");
-  LogFile2.print(Intensity);
-  LogFile2.print(", ");
-  LogFile2.print("Selected Current (%): ");
-  LogFile2.println(Current);
-  LogFile2.print("Calculation power density (uW/mm2): ");
-  LogFile2.println(EnergyDensity);
-  LogFile2.print("Energy applied (mW/cm2): ");
-  LogFile2.println(Energy);
-  LogFile2.print("Start Date/Time: ");
-  LogFile2.println(ConvertTimeDate(TimeAndDate));
-  LogFile2.println("Time (s), UV (relative), Temperature (Deg C)");
+  // TODO error handling for logfile
+  startRunLog(LogFile2);
 
   if (digitalRead(LID))  // Make sure lid is closed before start
   {
     FTImpl
         .Cmd_DLStart();  // start new display list - ends with
-                          // DL_swap///////////////////////////////////////////////////////////////////////////////////////
+                         // DL_swap///////////////////////////////////////////////////////////////////////////////////////
     FTImpl.Begin(FT_BITMAPS);      // Start a new graphics primitive
     FTImpl.Vertex2ii(0, 0, 0, 0);  // Draw primitive
     FTImpl.BitmapHandle(0);
@@ -650,7 +658,7 @@ void runScreen(uint8_t currentTag)
   analogWrite(ADM, SetCurrent);  // turn on LEDs (slowly)
   FTImpl
       .Cmd_DLStart();  // start new display list - ends with
-                        // DL_swap///////////////////////////////////////////////////////////////////////////////////////
+                       // DL_swap///////////////////////////////////////////////////////////////////////////////////////
   FTImpl.Begin(FT_BITMAPS);      // Start a new graphics primitive
   FTImpl.Vertex2ii(0, 0, 0, 0);  // Draw primitive
   FTImpl.BitmapHandle(0);
@@ -658,8 +666,7 @@ void runScreen(uint8_t currentTag)
   FTImpl.BitmapLayout(FT_RGB565, 480L * 2, 272);
   FTImpl.BitmapSize(FT_NEAREST, FT_BORDER, FT_BORDER, 480, 272);
   FTImpl.ColorRGB(0xff, 0xff, 0xff);
-  FTImpl.Cmd_Text(230, 80, 28, FT_OPT_CENTER,
-                  "Starting, please wait....");
+  FTImpl.Cmd_Text(230, 80, 28, FT_OPT_CENTER, "Starting, please wait....");
   FTImpl.Cmd_Spinner(240, 150, 0, 0);
   FTImpl.Display();
   FTImpl.Cmd_Swap();
@@ -680,11 +687,11 @@ void runScreen(uint8_t currentTag)
     TimeString[1] = char(48 + int(iTime / 60) - 10 * int(iTime / 600));
     TimeString[3] = char(48 + int((iTime - 60 * int(iTime / 60)) / 10));
     TimeString[4] = char(48 + iTime - 60 * int(iTime / 60) -
-                          10 * int((iTime - 60 * int(iTime / 60)) / 10));
+                         10 * int((iTime - 60 * int(iTime / 60)) / 10));
     // Serial.println(TimeString);
     FTImpl
         .Cmd_DLStart();  // start new display list - ends with
-                          // DL_swap///////////////////////////////////////////////////////////////////////////////////////
+                         // DL_swap///////////////////////////////////////////////////////////////////////////////////////
     FTImpl.Begin(FT_BITMAPS);      // Start a new graphics primitive
     FTImpl.Vertex2ii(0, 0, 0, 0);  // Draw primitive
     FTImpl.BitmapHandle(0);
@@ -695,7 +702,7 @@ void runScreen(uint8_t currentTag)
     FTImpl.Cmd_Text(230, 60, 31, FT_OPT_CENTER, TimeString);
     FTImpl.Cmd_Text(230, 10, 28, FT_OPT_CENTER, ProjectString);
     uint16_t tagoption = 0;  // no touch is default 3d effect and touch is flat
-                    // effect
+                             // effect
     if (13 == tagval) tagoption = FT_OPT_FLAT;
     FTImpl.Tag(13);
     FTImpl.Cmd_Button(63 - 47, 241 - 19, 94, 38, 26, tagoption, "Abort");
@@ -754,7 +761,7 @@ void runScreen(uint8_t currentTag)
       uvValue = uv.readUV();
       sprintf(uvPrintVal, "%05i",
               uvValue);  //%0 left pads the number with zeros, 5 = width,
-                          // i = signed decimal integer
+                         // i = signed decimal integer
       for (i = 0; i < 5; i++) {
         uvPrint[i + 5] = uvPrintVal[i];
       }
@@ -834,7 +841,7 @@ void loop() {
   char TmpDate[3];
   // end sliders
 
-  File LogFile2;  
+  File LogFile2;
   float Float;
   char sdlogbuffer[80], sdlog;
   int logpointer = 0, logcopycount = 0;
@@ -862,7 +869,7 @@ void loop() {
       tagval = 0;  // TODO remove
     } else if (kDisplayScreenRun == currentScreen) {
       runScreen(tagval);
-      tagval = 0; //TODO remove
+      tagval = 0;  // TODO remove
     } else {
       if (Screen !=
           0)  // On all other screen bottom left button is
