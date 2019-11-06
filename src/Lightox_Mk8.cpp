@@ -136,7 +136,7 @@ char ProjectString[150] = {'P', 'r', 'o', 'j', 'e', 'c', 't', ' ', 'd', 'e',
                            's', 'c', 'r', 'i', 'p', 't', 'i', 'o', 'n', ' ',
                            'i', 'n', ' ', 'u', 'p', ' ', 't', 'o', ' ', '4',
                            '0', ' ', 'c', 'h', 'a', 'r', 's', '\0'};
-char LogFile[20] = {'/', 'L', 'O', 'G', 'S', '/', 'L', 'O', 'G',
+char LogFileName[20] = {'/', 'L', 'O', 'G', 'S', '/', 'L', 'O', 'G',
                     '0', '0', '0', '0', '0', '.', 'C', 'S', 'V'};
 int LogRef = 0, LineCount = 0;
 char LineCountString[5];
@@ -570,6 +570,23 @@ void experimentSettingsScreen(uint8_t currentTag) {
                   FT_OPT_CENTERY, labelBuffer);
 }
 
+File tryOpenLogfile()
+{
+  do {
+    LogRef++;  // increment logfile count and look for next free file
+    LogFileName[11] = char(48 + int(LogRef / 100));
+    LogFileName[12] = char(48 + int((LogRef - int(LogRef / 100) * 100) / 10));
+    LogFileName[13] = char(48 + int(LogRef - int(LogRef / 10) * 10));
+    Serial.println(LogFileName);
+  } while (sd.exists(LogFileName));
+
+  File logFile = sd.open(LogFileName, FILE_WRITE);
+  if (!logFile) {  // Open and ensure file created o.k.
+    Serial.print(F("File error"));
+  }
+  return logFile;
+}
+
 void runScreen(uint8_t currentTag)
 {
   FTImpl.Display();  // added as first go at getting screen 6 to work
@@ -579,18 +596,7 @@ void runScreen(uint8_t currentTag)
   ReadTimeDate(TimeAndDate);
   Serial.println(ConvertTimeDate(TimeAndDate));
 
-  do {
-    LogRef++;  // increment logfile count and look for next free file
-    LogFile[11] = char(48 + int(LogRef / 100));
-    LogFile[12] = char(48 + int((LogRef - int(LogRef / 100) * 100) / 10));
-    LogFile[13] = char(48 + int(LogRef - int(LogRef / 10) * 10));
-    Serial.println(LogFile);
-  } while (sd.exists(LogFile));
-
-  File LogFile2 = sd.open(LogFile, FILE_WRITE);
-  if (!LogFile2) {  // Open and ensure file created o.k.
-    Serial.print(F("File error"));
-  }
+  File LogFile2 = tryOpenLogfile();
   LogFile2.println(
       "Deliberately left blank");  // Sometimes lose first
                                     // line, so make it a dummy.
@@ -1195,15 +1201,15 @@ void loop() {
         } else {
           do {
             LogRef++;
-            LogFile[11] =
+            LogFileName[11] =
                 char(48 + int(LogRef / 100));  // can cope with up to 999 files
-            LogFile[12] =
+            LogFileName[12] =
                 char(48 + int((LogRef - int(LogRef / 100) * 100) / 10));
-            LogFile[13] = char(48 + int(LogRef - int(LogRef / 10) * 10));
-            Serial.println(LogFile);
-            if (sd.exists(LogFile)) {
+            LogFileName[13] = char(48 + int(LogRef - int(LogRef / 10) * 10));
+            Serial.println(LogFileName);
+            if (sd.exists(LogFileName)) {
               // copy file
-              if ((LogFile2 = sd.open(LogFile)) == NULL) {
+              if ((LogFile2 = sd.open(LogFileName)) == NULL) {
                 Serial.print(F("Log file not found"));
               } else {
                 if (!digitalRead(
@@ -1211,7 +1217,7 @@ void loop() {
                 {
                   Serial.print(F("No flash drive found"));
                 } else {
-                  for (i = 11; i < 14; i++) FlashFile[i + 1] = LogFile[i];
+                  for (i = 11; i < 14; i++) FlashFile[i + 1] = LogFileName[i];
                   flash_data(FlashFile, true);  // open file for write
                   delay(1000);  // Needs extra time to create the file.
                                 // Depends on flash drive used
@@ -1243,7 +1249,7 @@ void loop() {
                       FTImpl.Cmd_Text(230, 50, 31, FT_OPT_CENTER,
                                       "Copying....");
                       FTImpl.Cmd_Text(230, 100, 29, FT_OPT_CENTER, "File:");
-                      FTImpl.Cmd_Text(230, 130, 29, FT_OPT_CENTER, LogFile);
+                      FTImpl.Cmd_Text(230, 130, 29, FT_OPT_CENTER, LogFileName);
                       LineCountString[0] = char(
                           48 + int(LineCount /
                                    1000));  // can cope with up to 9999 lines
@@ -1272,7 +1278,7 @@ void loop() {
                   // Close the file by sending Control-Z
                   mySerial.write(26);  // 26 is Control-Z character
                   LogFile2.close();
-                  sd.remove(LogFile);  // delete the logfile
+                  sd.remove(LogFileName);  // delete the logfile
                 }
               }
             } else {
