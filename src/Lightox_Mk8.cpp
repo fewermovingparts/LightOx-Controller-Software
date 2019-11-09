@@ -591,11 +591,10 @@ File tryOpenLogfile() {
   return logFile;
 }
 
-void startRunLog(File logFile)
-{
+void startRunLog(File logFile) {
   // TODO use correct variables and units
   logFile.println("Deliberately left blank");  // Sometimes lose first
-                                                // line, so make it a dummy.
+                                               // line, so make it a dummy.
   logFile.print("Test ID: ");                  // Record project data
   logFile.println(ProjectString);
   logFile.print("Duration (s): ");
