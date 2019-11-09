@@ -401,6 +401,7 @@ void experimentSettingsScreen(uint8_t currentTag) {
 
   int32_t sliderTrackerVal;
 
+  const int32_t kMinIrradience = 5;
   const int32_t kMaxIrradience = 100;  // needs units not percentage?
 
   const int32_t kMaxMinutes = 30;
@@ -442,7 +443,7 @@ void experimentSettingsScreen(uint8_t currentTag) {
   } else if (irradienceSliderTag == tagval) {
     sliderTrackerVal = TrackRegisterVal >> 16;  // value is 0 - 65535
     irradience = kMaxIrradience * sliderTrackerVal / 65535;
-    irradience = max(irradience, 1);
+    irradience = max(irradience, kMinIrradience);
 
     if (kHeldSliderEnergy == heldSlider) {
       if (irradience == 0) {
@@ -488,7 +489,7 @@ void experimentSettingsScreen(uint8_t currentTag) {
       if (irradience > kMaxIrradience) {
         irradience = kMaxIrradience;
         energy = irradience * time;
-      } else if (irradience < 1) {
+      } else if (irradience < kMinIrradience) {
         irradience = 1;
         energy = irradience * time;
       }
