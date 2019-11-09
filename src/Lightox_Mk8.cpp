@@ -614,10 +614,31 @@ void startRunLog(File logFile) {
   logFile.println("Time (s), UV (relative), Temperature (Deg C)");
 }
 
-void runScreen(uint8_t currentTag) {
-  FTImpl.Display();  // added as first go at getting screen 6 to work
-  FTImpl.Cmd_Swap();
+static void showSpinner(const char *message) {
+  FTImpl.ClearColorRGB(255, 255, 255);
+  FTImpl.DLStart();
+  FTImpl.ColorRGB(kColourPrimary);
+  if (message) {
+    FTImpl.Cmd_Text(230, 80, 28, FT_OPT_CENTER, message);
+  }
+  FTImpl.Cmd_Spinner(FT_DISPLAY_HSIZE / 2, 150, 0, 0);
+
   FTImpl.Finish();
+}
+
+void checkAndWaitForLid() {
+  if (digitalRead(LID)) {
+    showSpinner("Close Lid");
+    Serial.println("Close Lid");
+    do {
+      delay(100);
+    } while (digitalRead(LID));
+  }
+}
+
+void runScreen(uint8_t currentTag) {
+  showSpinner(nullptr);
+
   Serial.println(SetCurrent);
   ReadTimeDate(TimeAndDate);
   Serial.println(ConvertTimeDate(TimeAndDate));
@@ -626,28 +647,7 @@ void runScreen(uint8_t currentTag) {
   // TODO error handling for logfile
   startRunLog(LogFile2);
 
-  if (digitalRead(LID))  // Make sure lid is closed before start
-  {
-    FTImpl
-        .Cmd_DLStart();  // start new display list - ends with
-                         // DL_swap///////////////////////////////////////////////////////////////////////////////////////
-    FTImpl.Begin(FT_BITMAPS);      // Start a new graphics primitive
-    FTImpl.Vertex2ii(0, 0, 0, 0);  // Draw primitive
-    FTImpl.BitmapHandle(0);
-    FTImpl.BitmapSource(0);
-    FTImpl.BitmapLayout(FT_RGB565, 480L * 2, 272);
-    FTImpl.BitmapSize(FT_NEAREST, FT_BORDER, FT_BORDER, 480, 272);
-    FTImpl.ColorRGB(0xff, 0xff, 0xff);
-    FTImpl.Cmd_Text(230, 80, 31, FT_OPT_CENTER, "Close Lid");
-    Serial.println("Close Lid");
-    FTImpl.Cmd_Spinner(240, 150, 0, 0);
-    FTImpl.Display();
-    FTImpl.Cmd_Swap();
-    FTImpl.Finish();
-    do {
-      delay(100);
-    } while (digitalRead(LID));
-  }
+  checkAndWaitForLid();  // Make sure lid is closed before start
   analogWrite(ADM, 0);
   analogWrite(PWM, 5);  // LEDs power setting - see Mk6 - starting with
                         // PWM = 0 causes LED's to fail.
@@ -656,22 +656,10 @@ void runScreen(uint8_t currentTag) {
   delay(1000);  // to make sure current setting voltage R-C circuit is
                 // charged
   analogWrite(ADM, SetCurrent);  // turn on LEDs (slowly)
-  FTImpl
-      .Cmd_DLStart();  // start new display list - ends with
-                       // DL_swap///////////////////////////////////////////////////////////////////////////////////////
-  FTImpl.Begin(FT_BITMAPS);      // Start a new graphics primitive
-  FTImpl.Vertex2ii(0, 0, 0, 0);  // Draw primitive
-  FTImpl.BitmapHandle(0);
-  FTImpl.BitmapSource(0);
-  FTImpl.BitmapLayout(FT_RGB565, 480L * 2, 272);
-  FTImpl.BitmapSize(FT_NEAREST, FT_BORDER, FT_BORDER, 480, 272);
-  FTImpl.ColorRGB(0xff, 0xff, 0xff);
-  FTImpl.Cmd_Text(230, 80, 28, FT_OPT_CENTER, "Starting, please wait....");
-  FTImpl.Cmd_Spinner(240, 150, 0, 0);
-  FTImpl.Display();
-  FTImpl.Cmd_Swap();
-  FTImpl.Finish();
-  delay(10000);
+
+  showSpinner("Starting, please wait....");
+
+  delay(1000); // TODO return to 10000
   analogWrite(PWM, int((float)Intensity * 2.55));  // LEDs power setting
 
   msTime = millis();
