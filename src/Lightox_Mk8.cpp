@@ -863,6 +863,7 @@ void loop() {
       runScreen(tagval);
       tagval = 0;  // TODO remove
     } else {
+      FTImpl.DLStart();
       if (Screen !=
           0)  // On all other screen bottom left button is
               // quit///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
