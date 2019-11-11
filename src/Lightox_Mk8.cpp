@@ -677,18 +677,22 @@ void runScreen(uint8_t currentTag) {
     TimeString[4] = char(48 + iTime - 60 * int(iTime / 60) -
                          10 * int((iTime - 60 * int(iTime / 60)) / 10));
     // Serial.println(TimeString);
-    FTImpl
-        .Cmd_DLStart();  // start new display list - ends with
-                         // DL_swap///////////////////////////////////////////////////////////////////////////////////////
-    FTImpl.Begin(FT_BITMAPS);      // Start a new graphics primitive
-    FTImpl.Vertex2ii(0, 0, 0, 0);  // Draw primitive
-    FTImpl.BitmapHandle(0);
-    FTImpl.BitmapSource(0);
-    FTImpl.BitmapLayout(FT_RGB565, 480L * 2, 272);
-    FTImpl.BitmapSize(FT_NEAREST, FT_BORDER, FT_BORDER, 480, 272);
+    FTImpl.Cmd_DLStart();
+    FTImpl.ClearColorRGB(255, 255, 255);
+	  FTImpl.Clear(1,1,1);
+
+    FTImpl.SaveContext();
+    FTImpl.ScissorXY(10, 10);
+    FTImpl.ScissorSize(FT_DISPLAY_HSIZE - 2 * 10, 40);
+    FTImpl.ClearColorRGB(kColourPrimary);
+    FTImpl.Clear(1, 0, 0);
     FTImpl.ColorRGB(0xff, 0xff, 0xff);
+    FTImpl.Cmd_Text(230, 30, 28, FT_OPT_CENTER, ProjectString);
+    FTImpl.RestoreContext();
+
+    FTImpl.ColorRGB(0x000000);
     FTImpl.Cmd_Text(230, 60, 31, FT_OPT_CENTER, TimeString);
-    FTImpl.Cmd_Text(230, 10, 28, FT_OPT_CENTER, ProjectString);
+
     uint16_t tagoption = 0;  // no touch is default 3d effect and touch is flat
                              // effect
     if (13 == tagval) tagoption = FT_OPT_FLAT;
