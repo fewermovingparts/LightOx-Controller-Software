@@ -37,6 +37,8 @@
 #include <stdio.h>
 #include "Adafruit_VEML6070.h"  //UV sensor
 
+#include "database.h"
+
 enum NotepadResult { kNotepadResultQuit, kNotepadResultSave };
 // Buffer for the notepads
 #define MAX_FT_LINES 2  // Max FT_LINES allows to Display
@@ -153,6 +155,16 @@ const byte kCalibrationMagicByte = 0xAA;
 const int kCalibrationNumBytes = 24;
 bool needsCalibration = true;
 bool FirstPass = false, LidOpen = false;
+
+struct Experiment {
+  char name[41];
+  int datetime[7];
+  int32_t time;
+  int32_t irradience;
+  int32_t energy;
+};
+
+Experiment currentExp;
 
 static bool getCalibrationRequired() {
   return EEPROM.read(kCalibrationAddress) != kCalibrationMagicByte;
@@ -278,11 +290,13 @@ enum DisplayScreen {
   kDisplayScreenHome = 0,
   kDisplayScreenNewExp,
   kDisplayScreenBrowseExperiments,
+  kDisplayScreenShowSavedExp,
   kDisplayScreenExpSettings,
   kDisplayScreenRun,
+  kDisplayScreenNone,
 };
 bool screenJustSelected = true;
-DisplayScreen currentScreen = kDisplayScreenHome;
+DisplayScreen currentScreen = kDisplayScreenNone;  // Home;
 const uint8_t kFont = 26;
 
 static void setNextScreen(DisplayScreen screen) {
@@ -334,9 +348,9 @@ void homeScreen(uint8_t selectedTag) {
 void newExpScreen(uint16_t currentScreen) {
   NotepadResult result = Notepad(ProjectString);
   if (kNotepadResultSave == result) {
-    strncpy(ProjectString, Buffer.notepad[0],
-            min(sizeof(ProjectString), sizeof(Buffer.notepad[0])));
-    ProjectString[sizeof(ProjectString) - 1] = '\0';
+    strncpy(currentExp.name, Buffer.notepad[0],
+            min(sizeof(currentExp.name), sizeof(Buffer.notepad[0])));
+    currentExp.name[sizeof(currentExp.name) - 1] = '\0';
     setNextScreen(kDisplayScreenExpSettings);
   } else {
     setNextScreen(kDisplayScreenHome);
@@ -357,6 +371,18 @@ void drawSliderOrProgress(int16_t x, int16_t y, uint16_t w, uint16_t h,
   } else {
     FTImpl.Cmd_Slider(x, y, w, h, 0, val, Range);
   }
+}
+
+void saveCurrentExp() {
+  SavedExperimentsDB db(sd, "experiments.db");
+  SavedExperiment exp;
+  strcpy(exp.name, currentExp.name);
+  for (int i = 1; i < 7; ++i) {
+    exp.datetime[i] = currentExp.datetime[i];
+  }
+  exp.irradience = currentExp.irradience;
+  exp.time = currentExp.time;
+  db.addExperiment(exp);
 }
 
 void experimentSettingsScreen(uint8_t currentTag) {
@@ -507,6 +533,11 @@ void experimentSettingsScreen(uint8_t currentTag) {
       heldSlider = kHeldSliderTime;
       break;
     case kRunTag:
+      currentExp.energy = energy;
+      currentExp.irradience = irradience;
+      currentExp.time = time;
+      ReadTimeDate(currentExp.datetime);
+      saveCurrentExp();
       setNextScreen(kDisplayScreenRun);
       break;
     default:
@@ -659,7 +690,7 @@ void runScreen(uint8_t currentTag) {
 
   showSpinner("Starting, please wait....");
 
-  delay(1000); // TODO return to 10000
+  delay(1000);                                     // TODO return to 10000
   analogWrite(PWM, int((float)Intensity * 2.55));  // LEDs power setting
 
   msTime = millis();
@@ -679,7 +710,7 @@ void runScreen(uint8_t currentTag) {
     // Serial.println(TimeString);
     FTImpl.Cmd_DLStart();
     FTImpl.ClearColorRGB(255, 255, 255);
-	  FTImpl.Clear(1,1,1);
+    FTImpl.Clear(1, 1, 1);
 
     FTImpl.SaveContext();
     FTImpl.ScissorXY(10, 10);
@@ -687,7 +718,7 @@ void runScreen(uint8_t currentTag) {
     FTImpl.ClearColorRGB(kColourPrimary);
     FTImpl.Clear(1, 0, 0);
     FTImpl.ColorRGB(0xff, 0xff, 0xff);
-    FTImpl.Cmd_Text(230, 30, 28, FT_OPT_CENTER, ProjectString);
+    FTImpl.Cmd_Text(230, 30, 28, FT_OPT_CENTER, currentExp.name);
     FTImpl.RestoreContext();
 
     FTImpl.ColorRGB(0x000000);
@@ -821,6 +852,146 @@ EscapeNestedLoops:
   setNextScreen(kDisplayScreenHome);
 }
 
+uint8_t buttonPressLastTag = 0;
+uint8_t getButtonPressTag(uint8_t &currentTag) {
+  uint8_t buttonPressTag = 0;
+  currentTag = FTImpl.Read(REG_TOUCH_TAG);
+
+  if (currentTag != 0) {
+    if (buttonPressLastTag != currentTag && currentTag != 255) {
+      buttonPressLastTag = currentTag;
+    }
+  } else {
+    if (buttonPressLastTag != 0 && !FTImpl.IsPendown()) {
+      buttonPressTag = buttonPressLastTag;
+      buttonPressLastTag = 0;
+    }
+  }
+  return buttonPressTag;
+}
+
+// Needs topDisplayedExperiment global to return to correct point in the
+// experiments list from review prev experiment page
+void browseExperimentsScreen(uint8_t ignore) {
+  const int experimentsPerScreen = 7;
+  SavedExperiment browseExperiments[experimentsPerScreen];
+  int16_t browseExperimentsIdx[experimentsPerScreen];
+  SavedExperimentsDB db(sd, "experiments.db");
+
+  // db.clear();
+  if (db.count() < 102) {
+    for (int i = db.count(); i <= 102; ++i) {
+      SavedExperiment s;
+      String name = "Test ";
+      name.concat("-----");
+      name.concat("--------------------");
+      name.concat("-------");
+      name.concat(i);
+      strcpy(s.name, name.c_str());
+      s.datetime[0] = 0;
+      s.datetime[1] = i % 60;
+      s.datetime[2] = i / 10;
+      s.datetime[3] = 0;
+      s.datetime[4] = 12;
+      s.datetime[5] = 11;
+      s.datetime[6] = 2019;
+      s.irradience = max(i, 5);
+      s.time = 100 * i;
+      db.addExperiment(s);
+    }
+  }
+
+  unsigned long numSavedExperiments = db.count();
+  int16_t topDisplayedExperiment = numSavedExperiments;
+  int16_t lastTopDisplayedExperiment = -1;
+  int32_t experimentsToDisplay = 0;
+  uint8_t currentPressedTag = 0;
+  while (true) {
+    if (topDisplayedExperiment != lastTopDisplayedExperiment) {
+      experimentsToDisplay = min(experimentsPerScreen, topDisplayedExperiment);
+      Serial.print("Loading experiments ");
+      Serial.println(millis());
+      for (int i = 0; i < experimentsToDisplay; ++i) {
+        int expDisplayIdx = experimentsToDisplay - 1 - i;
+        int16_t expIdx = topDisplayedExperiment - experimentsToDisplay + i + 1;
+        db.getExperiment(expIdx, browseExperiments[expDisplayIdx]);
+        browseExperimentsIdx[expDisplayIdx] = expIdx;
+      }
+      Serial.print("Loaded experiments ");
+      Serial.println(millis());
+      lastTopDisplayedExperiment = topDisplayedExperiment;
+    }
+
+    // Render the current state
+    const uint8_t kNextPageTag = experimentsPerScreen + 10;
+    const uint8_t kPrevPageTag = experimentsPerScreen + 11;
+    const uint8_t kBackButtonTag = experimentsPerScreen + 12;
+
+    FTImpl.Cmd_DLStart();
+    FTImpl.ClearColorRGB(255, 255, 255);
+    FTImpl.Clear(1, 1, 1);
+    FTImpl.ColorRGB(0, 0, 0);
+    FTImpl.TagMask(1);
+    for (int i = 0; i < experimentsToDisplay; ++i) {
+      FTImpl.Tag(i + 1);
+      if (currentPressedTag == i + 1) {
+        FTImpl.Cmd_FGColor(0xDDDDDD);
+      } else {
+        FTImpl.Cmd_FGColor(0xFFFFFF);
+      }
+      const int kRowButtonHeight = 28;
+      const int kRowSpacing = 28;
+      FTImpl.Cmd_Button(10, 20 + i * kRowSpacing, FT_DISPLAYWIDTH - 20, 26,
+                        kFont, FT_OPT_FLAT, "");
+      FTImpl.Cmd_Text(20, 20 + kRowButtonHeight / 2 + i * kRowSpacing, kFont,
+                      FT_OPT_CENTERY, browseExperiments[i].name);
+      String datetime = ConvertTimeDate(browseExperiments[i].datetime);
+      FTImpl.Cmd_Text(300, 20 + kRowButtonHeight / 2 + i * kRowSpacing, kFont,
+                      FT_OPT_CENTERY, datetime.c_str());
+    }
+    FTImpl.Cmd_FGColor(kColourPrimary);
+
+    if (topDisplayedExperiment - experimentsPerScreen > 0) {
+      FTImpl.Tag(kNextPageTag);
+      uint16_t options = currentPressedTag == kNextPageTag ? FT_OPT_FLAT : 0;
+      FTImpl.Cmd_Button(423 - 47, 241 - 19, 94, 38, 26, options, "Next");
+    }
+    if (topDisplayedExperiment != numSavedExperiments) {
+      FTImpl.Tag(kPrevPageTag);
+      uint16_t options = currentPressedTag == kPrevPageTag ? FT_OPT_FLAT : 0;
+      FTImpl.Cmd_Button(423 - 47 - 94 - 40, 241 - 19, 94, 38, 26, options,
+                        "Previous");
+    }
+    FTImpl.Tag(kBackButtonTag);
+    uint16_t options = currentPressedTag == kBackButtonTag ? FT_OPT_FLAT : 0;
+    FTImpl.Cmd_Button(63 - 47, 241 - 19, 94, 38, 26, options, "Back");
+    FTImpl.DLEnd();
+
+    uint8_t buttonPressTag = 0;
+    do {
+      buttonPressTag = getButtonPressTag(currentPressedTag);
+    } while (buttonPressTag == 0 && currentPressedTag == 0);
+
+    if (kBackButtonTag == buttonPressTag) {
+      setNextScreen(kDisplayScreenHome);
+      break;
+    } else if (kNextPageTag == buttonPressTag) {
+      if (topDisplayedExperiment - experimentsPerScreen > 0) {
+        topDisplayedExperiment -= experimentsPerScreen;
+      }
+    } else if (kPrevPageTag == buttonPressTag) {
+      if (topDisplayedExperiment + experimentsPerScreen <=
+          numSavedExperiments) {
+        topDisplayedExperiment += experimentsPerScreen;
+      }
+    } else if (0 < buttonPressTag && buttonPressTag < experimentsToDisplay) {
+      setNextScreen(kDisplayScreenShowSavedExp);
+      // Set some magic global variable to the Saved Exp state
+      // showSavedExpScreenExpIdx = browseExperimentsIdx[buttonPressTag - 1];
+    }
+  };
+}
+
 void loop() {
   // newscreen
   sTagXY sTagxy;
@@ -841,8 +1012,8 @@ void loop() {
                         '0', '0', '0', '0', '0', '.', 'C', 'S', 'V'};
   bool DateRead = false;
 
-  Screen = 0;
-  setNextScreen(kDisplayScreenExpSettings);
+  Screen = 0;  // 5;
+  setNextScreen(kDisplayScreenHome);
 
   while (1) {
     FTImpl.TagMask(1);
@@ -862,6 +1033,9 @@ void loop() {
     } else if (kDisplayScreenRun == currentScreen) {
       runScreen(tagval);
       tagval = 0;  // TODO remove
+    } else if (kDisplayScreenBrowseExperiments == currentScreen) {
+      browseExperimentsScreen(tagval);
+      tagval = 0;
     } else {
       FTImpl.DLStart();
       if (Screen !=
@@ -1611,21 +1785,19 @@ void ReadTimeDate(int TimeDate[]) {
 
 //=====================================
 String ConvertTimeDate(int TimeDate[]) {
-  String temp = "";
+  char buffer[20];
+  if (TimeDate[4] < 1 || TimeDate[4] > 31 || TimeDate[5] < 1 ||
+      TimeDate[5] > 12 || TimeDate[6] < 0 || TimeDate[6] > 3000 ||
+      TimeDate[2] < 0 || TimeDate[2] > 24 || TimeDate[1] < 0 ||
+      TimeDate[1] > 60 || TimeDate[0] < 0 || TimeDate[0] > 60) {
+    return String("Invalid date/time");
+  }
+  sprintf(buffer, "%02d/%02d/%4d %02d:%02d:%02d", TimeDate[4], TimeDate[5],
+          TimeDate[6], TimeDate[2], TimeDate[1], TimeDate[0]);
 
-  temp.concat(TimeDate[4]);
-  temp.concat("/");
-  temp.concat(TimeDate[5]);
-  temp.concat("/");
-  temp.concat(TimeDate[6]);
-  temp.concat(" ");
-  temp.concat(TimeDate[2]);
-  temp.concat(":");
-  temp.concat(TimeDate[1]);
-  temp.concat(":");
-  temp.concat(TimeDate[0]);
+  String temp(buffer);
 
-  return (temp);
+  return temp;
 }
 
 #define ON 1
