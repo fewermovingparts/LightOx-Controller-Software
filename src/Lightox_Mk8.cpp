@@ -304,6 +304,41 @@ static void setNextScreen(DisplayScreen screen) {
   currentScreen = screen;
 }
 
+const int16_t kBorderPixels = 16;
+const int16_t kBottomButtonHeight = 38;
+const int16_t kBottomButtonWidth = 94;
+
+static uint16_t getButtonOptions(uint8_t buttonTag, uint8_t currentPressedTag) {
+  return buttonTag == currentPressedTag ? FT_OPT_FLAT : 0;
+}
+
+static void drawBottomLeftButton(uint8_t tag, const char *label,
+                                 uint8_t currentPressedTag) {
+  FTImpl.Tag(tag);
+  FTImpl.Cmd_Button(kBorderPixels,
+                    FT_DISPLAYHEIGHT - kBottomButtonHeight - kBorderPixels,
+                    kBottomButtonWidth, kBottomButtonHeight, kFont,
+                    getButtonOptions(tag, currentPressedTag), label);
+}
+
+static void drawBottomMiddleButton(uint8_t tag, const char *label,
+                                   uint8_t currentPressedTag) {
+  FTImpl.Tag(tag);
+  FTImpl.Cmd_Button((FT_DISPLAYWIDTH - kBottomButtonWidth) / 2,
+                    FT_DISPLAYHEIGHT - kBottomButtonHeight - kBorderPixels,
+                    kBottomButtonWidth, kBottomButtonHeight, kFont,
+                    getButtonOptions(tag, currentPressedTag), label);
+}
+
+static void drawBottomRightButton(uint8_t tag, const char *label,
+                                  uint8_t currentPressedTag) {
+  FTImpl.Tag(tag);
+  FTImpl.Cmd_Button(FT_DISPLAYWIDTH - kBottomButtonWidth - kBorderPixels,
+                    FT_DISPLAYHEIGHT - kBottomButtonHeight - kBorderPixels,
+                    kBottomButtonWidth, kBottomButtonHeight, kFont,
+                    getButtonOptions(tag, currentPressedTag), label);
+}
+
 void homeScreen(uint8_t selectedTag) {
   if (screenJustSelected) {
     Screen = 0;
@@ -667,6 +702,20 @@ void checkAndWaitForLid() {
   }
 }
 
+void showExpHeader(const char *expName, int TimeDate[7]) {
+  FTImpl.SaveContext();
+  FTImpl.ScissorXY(10, 10);
+  FTImpl.ScissorSize(FT_DISPLAYWIDTH - 2 * 10, 40);
+  FTImpl.ClearColorRGB(kColourPrimary);
+  FTImpl.Clear(1, 0, 0);
+  FTImpl.ColorRGB(0xff, 0xff, 0xff);
+  String s(expName);
+  s.concat(" - ");
+  s.concat(ConvertTimeDate(TimeDate));
+  FTImpl.Cmd_Text(FT_DISPLAYWIDTH / 2, 30, 28, FT_OPT_CENTER, s.c_str());
+  FTImpl.RestoreContext();
+}
+
 void runScreen(uint8_t currentTag) {
   showSpinner(nullptr);
 
@@ -712,14 +761,7 @@ void runScreen(uint8_t currentTag) {
     FTImpl.ClearColorRGB(255, 255, 255);
     FTImpl.Clear(1, 1, 1);
 
-    FTImpl.SaveContext();
-    FTImpl.ScissorXY(10, 10);
-    FTImpl.ScissorSize(FT_DISPLAY_HSIZE - 2 * 10, 40);
-    FTImpl.ClearColorRGB(kColourPrimary);
-    FTImpl.Clear(1, 0, 0);
-    FTImpl.ColorRGB(0xff, 0xff, 0xff);
-    FTImpl.Cmd_Text(230, 30, 28, FT_OPT_CENTER, currentExp.name);
-    FTImpl.RestoreContext();
+    showExpHeader(currentExp.name, currentExp.datetime);
 
     FTImpl.ColorRGB(0x000000);
     FTImpl.Cmd_Text(230, 60, 31, FT_OPT_CENTER, TimeString);
@@ -962,9 +1004,8 @@ void browseExperimentsScreen(uint8_t ignore) {
       FTImpl.Cmd_Button(423 - 47 - 94 - 40, 241 - 19, 94, 38, 26, options,
                         "Previous");
     }
-    FTImpl.Tag(kBackButtonTag);
-    uint16_t options = currentPressedTag == kBackButtonTag ? FT_OPT_FLAT : 0;
-    FTImpl.Cmd_Button(63 - 47, 241 - 19, 94, 38, 26, options, "Back");
+    drawBottomLeftButton(kBackButtonTag, "Back",
+                         currentPressedTag == kBackButtonTag);
     FTImpl.DLEnd();
 
     uint8_t buttonPressTag = 0;
@@ -986,10 +1027,58 @@ void browseExperimentsScreen(uint8_t ignore) {
       }
     } else if (0 < buttonPressTag && buttonPressTag < experimentsToDisplay) {
       setNextScreen(kDisplayScreenShowSavedExp);
+      currentExp.energy = 12345;
       // Set some magic global variable to the Saved Exp state
       // showSavedExpScreenExpIdx = browseExperimentsIdx[buttonPressTag - 1];
+      break;
     }
   };
+}
+
+void savedExperimentScreen() {
+  char labelBuffer[30];
+  uint8_t currentPressedTag = 0;
+  uint8_t buttonPressTag = 0;
+
+  do {
+    FTImpl.Cmd_DLStart();
+    FTImpl.ClearColorRGB(0xFFFFFF);
+    FTImpl.Clear(1, 1, 1);
+    showExpHeader(currentExp.name, currentExp.datetime);
+    const int kSpacing = 40;
+    const int kLeftColumnX = 30;
+    const int kRightColumnX = 200;
+    FTImpl.Cmd_Text(kLeftColumnX, 60, kFont, 0, "Energy:");
+    sprintf(labelBuffer, "%d:%02d", currentExp.time / 60, currentExp.time % 60);
+    FTImpl.Cmd_Text(kRightColumnX, 60, kFont, 0, labelBuffer);
+    FTImpl.Cmd_Text(kLeftColumnX, 60 + kSpacing, kFont, 0, "Irradience:");
+    sprintf(labelBuffer, "%ld %", currentExp.irradience);
+    FTImpl.Cmd_Text(kRightColumnX, 60 + kSpacing, kFont, 0, labelBuffer);
+    FTImpl.Cmd_Text(kLeftColumnX, 60 + 2 * kSpacing, kFont, 0, "Energy:");
+    sprintf(labelBuffer, "%ld mW/mm2", currentExp.energy);
+
+    const uint8_t kBackButtonTag = 10;
+    const uint8_t kModifyButtonTag = 11;
+    const uint8_t kRunButtonTag = 12;
+    FTImpl.TagMask(1);
+    drawBottomLeftButton(kBackButtonTag, "Back", currentPressedTag);
+    drawBottomMiddleButton(kModifyButtonTag, "Modify", currentPressedTag);
+    drawBottomRightButton(kRunButtonTag, "Run", currentPressedTag);
+
+    do {
+      buttonPressTag = getButtonPressTag(currentPressedTag);
+    } while (buttonPressTag == 0 && currentPressedTag == 0);
+    if (kBackButtonTag == buttonPressTag) {
+      setNextScreen(kDisplayScreenBrowseExperiments);
+    } else if (kModifyButtonTag == buttonPressTag) {
+      setNextScreen(
+          kDisplayScreenNewExp);  // TODO Need to keep the current experiment
+                                  // settings and pass in the name
+    } else if (kRunButtonTag == buttonPressTag) {
+      ReadTimeDate(currentExp.datetime);
+      setNextScreen(kDisplayScreenRun);
+    }
+  } while (buttonPressTag == 0);
 }
 
 void loop() {
@@ -1035,6 +1124,9 @@ void loop() {
       tagval = 0;  // TODO remove
     } else if (kDisplayScreenBrowseExperiments == currentScreen) {
       browseExperimentsScreen(tagval);
+      tagval = 0;
+    } else if (kDisplayScreenShowSavedExp == currentScreen) {
+      savedExperimentScreen();
       tagval = 0;
     } else {
       FTImpl.DLStart();
