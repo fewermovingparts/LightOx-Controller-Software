@@ -166,6 +166,46 @@ struct Experiment {
 
 Experiment currentExp;
 
+// Issues including FTImpl twice so this need to be here :(
+class KeyPressTracker {
+ public:
+  KeyPressTracker(FT801IMPL_SPI *FTImpl)
+      : ftImpl(FTImpl), buttonPressLastTag(0){};
+
+  // Returns the tag that has been pressed and release, or zero if
+  // no tag pressed this call. Returns the currently pressed tag in
+  // currentTag.
+  uint8_t getButtonPressTag(uint8_t &currentTag) {
+    uint8_t buttonPressTag = 0;
+    currentTag = ftImpl->Read(REG_TOUCH_TAG);
+
+    if (currentTag != 0) {
+      if (buttonPressLastTag != currentTag) {
+        buttonPressLastTag = currentTag;
+      }
+    } else {
+      if (buttonPressLastTag != 0 && !ftImpl->IsPendown()) {
+        buttonPressTag = buttonPressLastTag;
+        buttonPressLastTag = 0;
+      }
+    }
+    return buttonPressTag;
+  };
+
+  uint8_t waitForChange(uint8_t &currentTag) {
+    uint8_t buttonPressTag = 0;
+    const uint8_t prevSelectedTag = currentTag;
+    do {
+      buttonPressTag = getButtonPressTag(currentTag);
+    } while (0 == buttonPressTag && prevSelectedTag == currentTag);
+    return buttonPressTag;
+  };
+
+ private:
+  FT801IMPL_SPI *ftImpl;
+  uint8_t buttonPressLastTag;
+};
+
 static bool getCalibrationRequired() {
   return EEPROM.read(kCalibrationAddress) != kCalibrationMagicByte;
 }
@@ -339,45 +379,58 @@ static void drawBottomRightButton(uint8_t tag, const char *label,
                     getButtonOptions(tag, currentPressedTag), label);
 }
 
-void homeScreen(uint8_t selectedTag) {
-  if (screenJustSelected) {
-    Screen = 0;
-    Loadimage2ram();
-    screenJustSelected = false;
-  }
+void homeScreen() {
+  Serial.println("TRACE: homeScren()");
+  Screen = 0;
+  Loadimage2ram();
 
-  // Display the logo
-  FTImpl.Cmd_DLStart();
+  DisplayScreen nextScreen = kDisplayScreenHome;
+  KeyPressTracker kpt(&FTImpl);
+  uint8_t selectedTag = 0;
+  while (true) {
+    // Display the logo
+    FTImpl.Cmd_DLStart();
 
-  FTImpl.Begin(FT_BITMAPS);      // Start a new graphics primitive
-  FTImpl.Vertex2ii(0, 0, 0, 0);  // Draw primitive
-  FTImpl.BitmapHandle(0);
-  FTImpl.BitmapSource(0);
-  FTImpl.BitmapLayout(FT_RGB565, 480L * 2, 272);
-  FTImpl.BitmapSize(FT_NEAREST, FT_BORDER, FT_BORDER, 480, 272);
+    FTImpl.Begin(FT_BITMAPS);      // Start a new graphics primitive
+    FTImpl.Vertex2ii(0, 0, 0, 0);  // Draw primitive
+    FTImpl.BitmapHandle(0);
+    FTImpl.BitmapSource(0);
+    FTImpl.BitmapLayout(FT_RGB565, 480L * 2, 272);
+    FTImpl.BitmapSize(FT_NEAREST, FT_BORDER, FT_BORDER, 480, 272);
 
-  FTImpl.Cmd_FGColor(kColourPrimary);
-  FTImpl.TagMask(1);
+    FTImpl.Cmd_FGColor(kColourPrimary);
+    FTImpl.TagMask(1);
 
-  const int16_t buttonWidth = 120;
-  const uint8_t kNewExperimentTag = 11;
-  FTImpl.Tag(kNewExperimentTag);
-  uint16_t options = kNewExperimentTag == selectedTag ? FT_OPT_FLAT : 0;
-  FTImpl.Cmd_Button(FT_DISPLAY_HSIZE / 4 - buttonWidth / 2, 200, buttonWidth,
-                    30, kFont, options, "New experiment");
+    const int16_t buttonWidth = 120;
+    const uint8_t kNewExperimentTag = 11;
+    FTImpl.Tag(kNewExperimentTag);
+    uint16_t options = kNewExperimentTag == selectedTag ? FT_OPT_FLAT : 0;
+    FTImpl.Cmd_Button(FT_DISPLAY_HSIZE / 4 - buttonWidth / 2, 200, buttonWidth,
+                      30, kFont, options, "New experiment");
 
-  const uint8_t kPrevExperimentTag = 12;
-  FTImpl.Tag(kPrevExperimentTag);
-  options = kPrevExperimentTag == selectedTag ? FT_OPT_FLAT : 0;
-  FTImpl.Cmd_Button(FT_DISPLAY_HSIZE * 3 / 4 - buttonWidth / 2, 200,
-                    buttonWidth, 30, kFont, options, "Rerun experiment");
+    const uint8_t kPrevExperimentTag = 12;
+    FTImpl.Tag(kPrevExperimentTag);
+    options = kPrevExperimentTag == selectedTag ? FT_OPT_FLAT : 0;
+    FTImpl.Cmd_Button(FT_DISPLAY_HSIZE * 3 / 4 - buttonWidth / 2, 200,
+                      buttonWidth, 30, kFont, options, "Rerun experiment");
+    FTImpl.DLEnd();
 
-  if (kNewExperimentTag == selectedTag) {
-    setNextScreen(kDisplayScreenNewExp);
-    Screen = 3;  // TODO remove once new exp screen updated
-  } else if (kPrevExperimentTag == selectedTag) {
-    setNextScreen(kDisplayScreenBrowseExperiments);
-  }
+    uint8_t buttonPressTag = kpt.waitForChange(selectedTag);
+
+    Serial.print("Home screen button pressed: ");
+    Serial.print(buttonPressTag);
+    Serial.print(" selectedTag: ");
+    Serial.println(selectedTag);
+
+    if (kNewExperimentTag == buttonPressTag) {
+      setNextScreen(kDisplayScreenNewExp);
+      Screen = 3;  // TODO remove once new exp screen updated
+      break;
+    } else if (kPrevExperimentTag == buttonPressTag) {
+      setNextScreen(kDisplayScreenBrowseExperiments);
+      break;
+    }
+  };
 }
 
 void newExpScreen(uint16_t currentScreen) {
@@ -894,24 +947,6 @@ EscapeNestedLoops:
   setNextScreen(kDisplayScreenHome);
 }
 
-uint8_t buttonPressLastTag = 0;
-uint8_t getButtonPressTag(uint8_t &currentTag) {
-  uint8_t buttonPressTag = 0;
-  currentTag = FTImpl.Read(REG_TOUCH_TAG);
-
-  if (currentTag != 0) {
-    if (buttonPressLastTag != currentTag && currentTag != 255) {
-      buttonPressLastTag = currentTag;
-    }
-  } else {
-    if (buttonPressLastTag != 0 && !FTImpl.IsPendown()) {
-      buttonPressTag = buttonPressLastTag;
-      buttonPressLastTag = 0;
-    }
-  }
-  return buttonPressTag;
-}
-
 // Needs topDisplayedExperiment global to return to correct point in the
 // experiments list from review prev experiment page
 void browseExperimentsScreen(uint8_t ignore) {
@@ -948,6 +983,7 @@ void browseExperimentsScreen(uint8_t ignore) {
   int16_t lastTopDisplayedExperiment = -1;
   int32_t experimentsToDisplay = 0;
   uint8_t currentPressedTag = 0;
+  KeyPressTracker kpt(&FTImpl);
   while (true) {
     if (topDisplayedExperiment != lastTopDisplayedExperiment) {
       experimentsToDisplay = min(experimentsPerScreen, topDisplayedExperiment);
@@ -1004,14 +1040,10 @@ void browseExperimentsScreen(uint8_t ignore) {
       FTImpl.Cmd_Button(423 - 47 - 94 - 40, 241 - 19, 94, 38, 26, options,
                         "Previous");
     }
-    drawBottomLeftButton(kBackButtonTag, "Back",
-                         currentPressedTag == kBackButtonTag);
+    drawBottomLeftButton(kBackButtonTag, "Back", currentPressedTag);
     FTImpl.DLEnd();
 
-    uint8_t buttonPressTag = 0;
-    do {
-      buttonPressTag = getButtonPressTag(currentPressedTag);
-    } while (buttonPressTag == 0 && currentPressedTag == 0);
+    uint8_t buttonPressTag = kpt.waitForChange(currentPressedTag);
 
     if (kBackButtonTag == buttonPressTag) {
       setNextScreen(kDisplayScreenHome);
@@ -1039,6 +1071,7 @@ void savedExperimentScreen() {
   char labelBuffer[30];
   uint8_t currentPressedTag = 0;
   uint8_t buttonPressTag = 0;
+  KeyPressTracker kpt(&FTImpl);
 
   do {
     FTImpl.Cmd_DLStart();
@@ -1066,7 +1099,7 @@ void savedExperimentScreen() {
     drawBottomRightButton(kRunButtonTag, "Run", currentPressedTag);
 
     do {
-      buttonPressTag = getButtonPressTag(currentPressedTag);
+      buttonPressTag = kpt.getButtonPressTag(currentPressedTag);
     } while (buttonPressTag == 0 && currentPressedTag == 0);
     if (kBackButtonTag == buttonPressTag) {
       setNextScreen(kDisplayScreenBrowseExperiments);
@@ -1111,7 +1144,7 @@ void loop() {
     FTImpl.ClearColorRGB(64, 64, 64);  // text colour?
 
     if (kDisplayScreenHome == currentScreen) {
-      homeScreen(tagval);
+      homeScreen();
       tagval = 0;  // TODO remove, avoids below code detecting a press
     } else if (kDisplayScreenNewExp == currentScreen) {
       newExpScreen(tagval);
@@ -2014,6 +2047,7 @@ NotepadResult Notepad(const char *initialText) {
       FirstPass = false;
     }
 
+    // TODO make the quit and save keys behave like the rest of the buttons
     if (13 == Read_sfk)  // quit
     {
       FTImpl.DLStart();
