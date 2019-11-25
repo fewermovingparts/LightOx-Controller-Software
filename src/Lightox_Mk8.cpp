@@ -184,8 +184,10 @@ class KeyPressTracker {
         buttonPressLastTag = currentTag;
       }
     } else {
-      if (buttonPressLastTag != 0 && !ftImpl->IsPendown()) {
-        buttonPressTag = buttonPressLastTag;
+      if (buttonPressLastTag != 0) {
+        if (!ftImpl->IsPendown()) {
+          buttonPressTag = buttonPressLastTag;
+        }
         buttonPressLastTag = 0;
       }
     }
@@ -2003,7 +2005,7 @@ NotepadResult Notepad(const char *initialText) {
   /*local variables*/
   uint8_t Line = 0;
   uint16_t Disp_pos = 0, But_opt;
-  uint8_t Read_sfk = 0, tval;
+  uint8_t tval;
   uint16_t noofchars = 0, line2disp = 0, nextline = 0;
   uint8_t font = 27, offset = 50;
   int32_t tagoption;
@@ -2020,6 +2022,8 @@ NotepadResult Notepad(const char *initialText) {
   }
   noofchars = i;
   i = 0;
+  Serial.print("buffer: ");
+  Serial.println(Buffer.notepad[Line]);
 
   /*intial setup*/
   Line = 0;                  // Starting line
@@ -2032,23 +2036,20 @@ NotepadResult Notepad(const char *initialText) {
   noofchars += 1;                                         // for cursor
                                                           /*enter*/
   Flag.Exit = 0;
-  Read_sfk = Read_Keypad();  // extra read here to catch unwanted save/quit
-  Read_sfk = Read_Keypad();  // extra read here to catch unwanted save/quit
+
+  KeyPressTracker kpt(&FTImpl);
 
   // Serial.println(Read_sfk);
   // Serial.println(Line);
   // Serial.println(Disp_pos);
+  Serial.print("buffer: ");
+  Serial.println(Buffer.notepad[Line]);
+
+  uint8_t buttonPressTag = 0;
+  uint8_t currentPressedTag = 0;
 
   do {
-    Read_sfk = Read_Keypad();  // read the keys
-    // Serial.print(Read_sfk);
-    if (FirstPass) {
-      Read_sfk = BACK;
-      FirstPass = false;
-    }
-
-    // TODO make the quit and save keys behave like the rest of the buttons
-    if (13 == Read_sfk)  // quit
+    if (13 == buttonPressTag)  // quit
     {
       FTImpl.DLStart();
       FTImpl.ClearColorRGB(64, 64, 64);
@@ -2058,7 +2059,7 @@ NotepadResult Notepad(const char *initialText) {
       goto Letsgetoutofhere;
     }
 
-    if (21 == Read_sfk)  // save
+    if (21 == buttonPressTag)  // save
     {
       FTImpl.DLStart();
       FTImpl.ClearColorRGB(64, 64, 64);
@@ -2078,105 +2079,108 @@ NotepadResult Notepad(const char *initialText) {
       }
     }
 
-    if (Flag.Key_Detect) {  // check if key is pressed
-      Flag.Key_Detect = 0;  // clear it
-      if (Read_sfk >=
-          SPECIAL_FUN) {  // check any special function keys are pressed
-        switch (Read_sfk) {
-          case BACK_SPACE:
-            if (noofchars > 1)  // check in the line there is any characters are
-                                // present,cursor not include
-            {
-              noofchars -= 1;  // clear the character in the buffer
-              Disp_pos -=
-                  Ft_Gpu_Rom_Font_WH(*(Buffer.notepad[Line] + noofchars - 1),
-                                     Font);  // Update the Disp_Pos
-            } else {
-              if (Line >= (MAX_FT_LINES - 1))
-                Line--;
-              else
-                Line = 0;  // check the FT_LINES
-              noofchars =
-                  strlen(Buffer.notepad[Line]);  // Read the len of the line
-              for (tval = 0; tval < noofchars;
-                   tval++)  // Compute the length of the Line
-                Disp_pos += Ft_Gpu_Rom_Font_WH(Buffer.notepad[Line][tval],
-                                               Font);  // Update the Disp_Pos
-            }
-            Buffer.temp = (Buffer.notepad[Line] +
-                           noofchars);  // load into temporary buffer
-            Buffer.temp[-1] = '_';      // update the string
-            Buffer.temp[0] = '\0';
-            break;
-
-          case CAPS_LOCK:
-            Flag.Caps ^= 1;  // toggle the caps lock on when the key detect
-            break;
-
-          case NUMBER_LOCK:
-            Flag.Numeric ^= 1;  // toggle the number lock on when the key detect
-            break;
-
-          case BACK:
-            for (tval = 0; tval < MAX_FT_LINES; tval++)
-              memset(&Buffer.notepad[tval], '\0', sizeof(Buffer.notepad[tval]));
-            Line = 0;                                    // Starting line
-            Disp_pos = LINE_STARTPOS;                    // starting pos
-            memset((Buffer.notepad[Line] + 0), '_', 1);  // For Cursor
-            Disp_pos += Ft_Gpu_Rom_Font_WH(Buffer.notepad[Line][0],
-                                           Font);  // Update the Disp_Pos
-            noofchars += 1;
-            break;
-        }
-      } else  // it is a standard character
-      {
-        // String and Line Termination
-
-        Disp_pos += Ft_Gpu_Rom_Font_WH(Read_sfk, Font);  // update dis_pos
-        Buffer.temp =
-            Buffer.notepad[Line] +
-            strlen(Buffer.notepad[Line]);  // load into temporary buffer
-        if (strlen(Buffer.notepad[0]) <
-            40)  // attempt to limit the character count
-        {
-          Buffer.temp[-1] = Read_sfk;  // update the string with new character
-          Buffer.temp[0] = '_';        // add the cursor
-          Buffer.temp[1] = '\0';       // add string terminator
-          //}  moved down
-          noofchars = strlen(Buffer.notepad[Line]);  // get the string len
-          // Serial.print(noofchars);
-          /*if(Disp_pos > LINE_ENDPOS)                                        //
-        check if there is place to put a character in a specific line
-        {
-          Buffer.temp = Buffer.notepad[Line]+(strlen(Buffer.notepad[Line])-1);
+    if (buttonPressTag >=
+        SPECIAL_FUN) {  // check any special function keys are pressed
+      switch (buttonPressTag) {
+        case BACK_SPACE:
+          if (noofchars > 1)  // check in the line there is any characters are
+                              // present,cursor not include
+          {
+            noofchars -= 1;  // clear the character in the buffer
+            Disp_pos -=
+                Ft_Gpu_Rom_Font_WH(*(Buffer.notepad[Line] + noofchars - 1),
+                                   Font);  // Update the Disp_Pos
+          } else {
+            if (Line >= (MAX_FT_LINES - 1))
+              Line--;
+            else
+              Line = 0;  // check the FT_LINES
+            noofchars =
+                strlen(Buffer.notepad[Line]);  // Read the len of the line
+            for (tval = 0; tval < noofchars;
+                 tval++)  // Compute the length of the Line
+              Disp_pos += Ft_Gpu_Rom_Font_WH(Buffer.notepad[Line][tval],
+                                             Font);  // Update the Disp_Pos
+          }
+          Buffer.temp =
+              (Buffer.notepad[Line] + noofchars);  // load into temporary buffer
+          Buffer.temp[-1] = '_';                   // update the string
           Buffer.temp[0] = '\0';
-          noofchars-=1;
-          Disp_pos = LINE_STARTPOS;
-          Line++; if(Line >= MAX_FT_LINES)  Line = 0;
-          memset((Buffer.notepad[Line]),'\0',sizeof(Buffer.notepad[Line])); //
-        Clear the line buffer for(;noofchars>=1;noofchars--,tval++)
-          {
-            if(Buffer.notepad[Line-1][noofchars] == ' '
-        ||Buffer.notepad[Line-1][noofchars] =='.')  // In case of space(New
-        String) or end of statement(.)
-              {
-                memset(Buffer.notepad[Line-1]+noofchars,'\0',1);
-                noofchars+=1;             // Include the space
-                memcpy(&Buffer.notepad[Line],(Buffer.notepad[Line-1]+noofchars),tval);
-                break;
-              }
-          }
-          noofchars = strlen(Buffer.notepad[Line]);
-          Buffer.temp = Buffer.notepad[Line]+noofchars;
-          Buffer.temp[0] = '_';
-          Buffer.temp[1] = '\0';
-          for(tval=0;tval<noofchars;tval++)
-          {
-            Disp_pos += Ft_Gpu_Rom_Font_WH(Buffer.notepad[Line][tval],Font);  //
-        Update the Disp_Pos
-          }
-        }*/
+          Serial.print("BACKSPACE buffer: ");
+          Serial.println(Buffer.notepad[Line]);
+          break;
+
+        case CAPS_LOCK:
+          Flag.Caps ^= 1;  // toggle the caps lock on when the key detect
+          break;
+
+        case NUMBER_LOCK:
+          Flag.Numeric ^= 1;  // toggle the number lock on when the key detect
+          break;
+
+        case BACK:
+          for (tval = 0; tval < MAX_FT_LINES; tval++)
+            memset(&Buffer.notepad[tval], '\0', sizeof(Buffer.notepad[tval]));
+          Line = 0;                                    // Starting line
+          Disp_pos = LINE_STARTPOS;                    // starting pos
+          memset((Buffer.notepad[Line] + 0), '_', 1);  // For Cursor
+          Disp_pos += Ft_Gpu_Rom_Font_WH(Buffer.notepad[Line][0],
+                                         Font);  // Update the Disp_Pos
+          noofchars += 1;
+          break;
+      }
+    } else if (buttonPressTag >= 32)  // it is a standard character
+    {
+      // String and Line Termination
+
+      Disp_pos += Ft_Gpu_Rom_Font_WH(buttonPressTag, Font);  // update dis_pos
+      Buffer.temp = Buffer.notepad[Line] +
+                    strlen(Buffer.notepad[Line]);  // load into temporary buffer
+      if (strlen(Buffer.notepad[0]) <
+          40)  // attempt to limit the character count
+      {
+        Buffer.temp[-1] =
+            buttonPressTag;     // update the string with new character
+        Buffer.temp[0] = '_';   // add the cursor
+        Buffer.temp[1] = '\0';  // add string terminator
+        //}  moved down
+        noofchars = strlen(Buffer.notepad[Line]);  // get the string len
+        Serial.print("Add char ");
+        Serial.print(buttonPressTag);
+        Serial.print(" buffer: ");
+        Serial.println(Buffer.notepad[Line]);
+        // Serial.print(noofchars);
+        /*if(Disp_pos > LINE_ENDPOS)                                        //
+      check if there is place to put a character in a specific line
+      {
+        Buffer.temp = Buffer.notepad[Line]+(strlen(Buffer.notepad[Line])-1);
+        Buffer.temp[0] = '\0';
+        noofchars-=1;
+        Disp_pos = LINE_STARTPOS;
+        Line++; if(Line >= MAX_FT_LINES)  Line = 0;
+        memset((Buffer.notepad[Line]),'\0',sizeof(Buffer.notepad[Line])); //
+      Clear the line buffer for(;noofchars>=1;noofchars--,tval++)
+        {
+          if(Buffer.notepad[Line-1][noofchars] == ' '
+      ||Buffer.notepad[Line-1][noofchars] =='.')  // In case of space(New
+      String) or end of statement(.)
+            {
+              memset(Buffer.notepad[Line-1]+noofchars,'\0',1);
+              noofchars+=1;             // Include the space
+              memcpy(&Buffer.notepad[Line],(Buffer.notepad[Line-1]+noofchars),tval);
+              break;
+            }
         }
+        noofchars = strlen(Buffer.notepad[Line]);
+        Buffer.temp = Buffer.notepad[Line]+noofchars;
+        Buffer.temp[0] = '_';
+        Buffer.temp[1] = '\0';
+        for(tval=0;tval<noofchars;tval++)
+        {
+          Disp_pos += Ft_Gpu_Rom_Font_WH(Buffer.notepad[Line][tval],Font);  //
+      Update the Disp_Pos
+        }
+      }*/
       }
     }
 
@@ -2188,7 +2192,7 @@ NotepadResult Notepad(const char *initialText) {
     FTImpl.TagMask(1);  // enable tag buffer updation
     FTImpl.Cmd_FGColor(kColourPrimary);
     FTImpl.Cmd_BGColor(0x19354B);
-    But_opt = (Read_sfk == BACK)
+    But_opt = (currentPressedTag == BACK)
                   ? FT_OPT_FLAT
                   : 0;  // button color change if the button during press
     FTImpl.Tag(BACK);   // Back    Return to Home
@@ -2196,13 +2200,13 @@ NotepadResult Notepad(const char *initialText) {
                       (FT_DISPLAYHEIGHT * 0.83 - offset),
                       (FT_DISPLAYWIDTH * 0.146), (FT_DISPLAYHEIGHT * 0.112),
                       font, But_opt, "Clear");
-    But_opt = (Read_sfk == BACK_SPACE) ? FT_OPT_FLAT : 0;
+    But_opt = (currentPressedTag == BACK_SPACE) ? FT_OPT_FLAT : 0;
     FTImpl.Tag(BACK_SPACE);  // BackSpace
     FTImpl.Cmd_Button((FT_DISPLAYWIDTH * 0.875),
                       (FT_DISPLAYHEIGHT * 0.70 - offset),
                       (FT_DISPLAYWIDTH * 0.125), (FT_DISPLAYHEIGHT * 0.112),
                       font, But_opt, "<-");
-    But_opt = (Read_sfk == ' ') ? FT_OPT_FLAT : 0;
+    But_opt = (currentPressedTag == ' ') ? FT_OPT_FLAT : 0;
     FTImpl.Tag(' ');  // Space
     FTImpl.Cmd_Button((FT_DISPLAYWIDTH * 0.115),
                       (FT_DISPLAYHEIGHT * 0.83 - offset),
@@ -2211,23 +2215,23 @@ NotepadResult Notepad(const char *initialText) {
 
     if (Flag.Numeric == OFF) {
       FTImpl.Cmd_Keys(0, (FT_DISPLAYHEIGHT * 0.442 - offset), FT_DISPLAYWIDTH,
-                      (FT_DISPLAYHEIGHT * 0.112), font, Read_sfk,
+                      (FT_DISPLAYHEIGHT * 0.112), font, currentPressedTag,
                       (Flag.Caps == ON ? "QWERTYUIOP" : "qwertyuiop"));
       FTImpl.Cmd_Keys(
           (FT_DISPLAYWIDTH * 0.042), (FT_DISPLAYHEIGHT * 0.57 - offset),
-          (FT_DISPLAYWIDTH * 0.96), (FT_DISPLAYHEIGHT * 0.112), font, Read_sfk,
-          (Flag.Caps == ON ? "ASDFGHJKL" : "asdfghjkl"));
+          (FT_DISPLAYWIDTH * 0.96), (FT_DISPLAYHEIGHT * 0.112), font,
+          currentPressedTag, (Flag.Caps == ON ? "ASDFGHJKL" : "asdfghjkl"));
       FTImpl.Cmd_Keys(
           (FT_DISPLAYWIDTH * 0.125), (FT_DISPLAYHEIGHT * 0.70 - offset),
-          (FT_DISPLAYWIDTH * 0.73), (FT_DISPLAYHEIGHT * 0.112), font, Read_sfk,
-          (Flag.Caps == ON ? "ZXCVBNM" : "zxcvbnm"));
+          (FT_DISPLAYWIDTH * 0.73), (FT_DISPLAYHEIGHT * 0.112), font,
+          currentPressedTag, (Flag.Caps == ON ? "ZXCVBNM" : "zxcvbnm"));
 
-      But_opt = (Read_sfk == CAPS_LOCK) ? FT_OPT_FLAT : 0;
+      But_opt = (currentPressedTag == CAPS_LOCK) ? FT_OPT_FLAT : 0;
       FTImpl.Tag(CAPS_LOCK);  // Capslock
       FTImpl.Cmd_Button(0, (FT_DISPLAYHEIGHT * 0.70 - offset),
                         (FT_DISPLAYWIDTH * 0.10), (FT_DISPLAYHEIGHT * 0.112),
                         font, But_opt, "a^");
-      But_opt = (Read_sfk == NUMBER_LOCK) ? FT_OPT_FLAT : 0;
+      But_opt = (currentPressedTag == NUMBER_LOCK) ? FT_OPT_FLAT : 0;
       FTImpl.Tag(NUMBER_LOCK);  // Numberlock
       FTImpl.Cmd_Button(0, (FT_DISPLAYHEIGHT * 0.83 - offset),
                         (FT_DISPLAYWIDTH * 0.10), (FT_DISPLAYHEIGHT * 0.112),
@@ -2235,16 +2239,17 @@ NotepadResult Notepad(const char *initialText) {
     }
     if (Flag.Numeric == ON) {
       FTImpl.Cmd_Keys(0, (FT_DISPLAYHEIGHT * 0.442 - offset), FT_DISPLAYWIDTH,
-                      (FT_DISPLAYHEIGHT * 0.112), font, Read_sfk, "1234567890");
+                      (FT_DISPLAYHEIGHT * 0.112), font, currentPressedTag,
+                      "1234567890");
       FTImpl.Cmd_Keys((FT_DISPLAYWIDTH * 0.042),
                       (FT_DISPLAYHEIGHT * 0.57 - offset),
                       (FT_DISPLAYWIDTH * 0.96), (FT_DISPLAYHEIGHT * 0.112),
-                      font, Read_sfk, "-@#$%^&*(");
+                      font, currentPressedTag, "-@#$%^&*(");
       FTImpl.Cmd_Keys((FT_DISPLAYWIDTH * 0.125),
                       (FT_DISPLAYHEIGHT * 0.70 - offset),
                       (FT_DISPLAYWIDTH * 0.73), (FT_DISPLAYHEIGHT * 0.112),
-                      font, Read_sfk, ")_+[]{}");
-      But_opt = (Read_sfk == NUMBER_LOCK) ? FT_OPT_FLAT : 0;
+                      font, currentPressedTag, ")_+[]{}");
+      But_opt = (currentPressedTag == NUMBER_LOCK) ? FT_OPT_FLAT : 0;
       FTImpl.Tag(253);  // Numberlock
       FTImpl.Cmd_Button(0, (FT_DISPLAYHEIGHT * 0.83 - offset),
                         (FT_DISPLAYWIDTH * 0.10), (FT_DISPLAYHEIGHT * 0.112),
@@ -2253,19 +2258,19 @@ NotepadResult Notepad(const char *initialText) {
 
     // assign tag value 21 to the save button
     tagoption = 0;  // no touch is default 3d effect and touch is flat effect
-    if (21 == Read_sfk) tagoption = FT_OPT_FLAT;
+    if (21 == currentPressedTag) tagoption = FT_OPT_FLAT;
     FTImpl.Tag(21);
     if (Screen == 3) {
-      FTImpl.Cmd_Button(423 - 47, 241 - 19, 94, 38, 26, 0, "Save");
+      FTImpl.Cmd_Button(423 - 47, 241 - 19, 94, 38, 26, tagoption, "Save");
     } else {
-      FTImpl.Cmd_Button(423 - 47, 241 - 19, 94, 38, 26, 0, "Enter");
+      FTImpl.Cmd_Button(423 - 47, 241 - 19, 94, 38, 26, tagoption, "Enter");
     }
 
     // assign tag value 13 to the quit button
     tagoption = 0;  // no touch is default 3d effect and touch is flat effect
-    if (13 == Read_sfk) tagoption = FT_OPT_FLAT;
+    if (13 == currentPressedTag) tagoption = FT_OPT_FLAT;
     FTImpl.Tag(13);
-    FTImpl.Cmd_Button(63 - 47, 241 - 19, 94, 38, 26, 0, "Quit");
+    FTImpl.Cmd_Button(63 - 47, 241 - 19, 94, 38, 26, tagoption, "Quit");
 
     FTImpl.TagMask(0);  // Disable the tag buffer updates
     FTImpl.ScissorXY(0, 0);
@@ -2283,6 +2288,12 @@ NotepadResult Notepad(const char *initialText) {
     }
     FTImpl.DLEnd();
     FTImpl.Finish();
+
+    buttonPressTag = kpt.waitForChange(currentPressedTag);
+    Serial.print("Notepad screen button pressed: ");
+    Serial.print(buttonPressTag);
+    Serial.print(" selectedTag: ");
+    Serial.println(currentPressedTag);
 
   } while (1);
 
