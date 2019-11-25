@@ -381,6 +381,22 @@ static void drawBottomRightButton(uint8_t tag, const char *label,
                     getButtonOptions(tag, currentPressedTag), label);
 }
 
+void showExpHeader(const char *expName, int TimeDate[7]) {
+  FTImpl.SaveContext();
+  FTImpl.ScissorXY(10, 10);
+  FTImpl.ScissorSize(FT_DISPLAYWIDTH - 2 * 10, 40);
+  FTImpl.ClearColorRGB(kColourPrimary);
+  FTImpl.Clear(1, 0, 0);
+  FTImpl.ColorRGB(0xff, 0xff, 0xff);
+  String s(expName);
+  if (TimeDate) {
+    s.concat(" - ");
+    s.concat(ConvertTimeDate(TimeDate));
+  }
+  FTImpl.Cmd_Text(FT_DISPLAYWIDTH / 2, 30, 28, FT_OPT_CENTER, s.c_str());
+  FTImpl.RestoreContext();
+}
+
 void homeScreen() {
   Serial.println("TRACE: homeScren()");
   Screen = 0;
@@ -477,14 +493,15 @@ void saveCurrentExp() {
 
 void experimentSettingsScreen(uint8_t currentTag) {
   FTImpl.Cmd_DLStart();
-  FTImpl.ClearColorRGB(64, 64, 64);
+  FTImpl.ClearColorRGB(255, 255, 255);
   FTImpl.Clear(1, 1, 1);
+  FTImpl.ColorRGB(0, 0, 0);
   FTImpl.TagMask(1);
 
   const uint8_t kRunTag = 14;
-  uint16_t options = kRunTag == currentTag ? FT_OPT_FLAT : 0;
-  FTImpl.Tag(kRunTag);
-  FTImpl.Cmd_Button(423 - 47, 241 - 19, 94, 38, 26, options, "Run");
+  const uint8_t kBackTag = 15;
+  drawBottomRightButton(kRunTag, "Run", currentTag);
+  drawBottomLeftButton(kBackTag, "Back", currentTag);
 
   // Todo add back button, currently the global quit button is displayed
 
@@ -630,6 +647,9 @@ void experimentSettingsScreen(uint8_t currentTag) {
       saveCurrentExp();
       setNextScreen(kDisplayScreenRun);
       break;
+    case kBackTag:
+      setNextScreen(kDisplayScreenNewExp);
+      break;
     default:
       break;
   }
@@ -674,8 +694,8 @@ void experimentSettingsScreen(uint8_t currentTag) {
                  heldSlider == kHeldSliderEnergy);
 
   FTImpl.TagMask(0);
-  FTImpl.ColorRGB(0xff, 0xff, 0xff);
-  FTImpl.Cmd_Text(60, 20, kFont, FT_OPT_CENTERY, ProjectString);
+  FTImpl.ColorRGB(0x00, 0x00, 0x00);
+  showExpHeader(currentExp.name, nullptr);
 
   char labelBuffer[30];
   sprintf(labelBuffer, "Duration: %2ld minutes", minutes);
@@ -755,20 +775,6 @@ void checkAndWaitForLid() {
       delay(100);
     } while (digitalRead(LID));
   }
-}
-
-void showExpHeader(const char *expName, int TimeDate[7]) {
-  FTImpl.SaveContext();
-  FTImpl.ScissorXY(10, 10);
-  FTImpl.ScissorSize(FT_DISPLAYWIDTH - 2 * 10, 40);
-  FTImpl.ClearColorRGB(kColourPrimary);
-  FTImpl.Clear(1, 0, 0);
-  FTImpl.ColorRGB(0xff, 0xff, 0xff);
-  String s(expName);
-  s.concat(" - ");
-  s.concat(ConvertTimeDate(TimeDate));
-  FTImpl.Cmd_Text(FT_DISPLAYWIDTH / 2, 30, 28, FT_OPT_CENTER, s.c_str());
-  FTImpl.RestoreContext();
 }
 
 void runScreen(uint8_t currentTag) {
