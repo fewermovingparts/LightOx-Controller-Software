@@ -94,7 +94,7 @@ int Intensity = 100;
 int32_t Current = 100, NewCurrent, NC;  // Current in %
 float SetCurrent = 1.2 / 5.0 * 255;     // SetCurrent in 0-5V converted to 0-255
 float Energy = 0;
-int Time = 300, iTime, i, ds, OldiTime, it;
+int Time = 300, iTime, ds, OldiTime, it;
 unsigned long msTime, msTimeLid;
 int uv2 = 0;
 uint16_t uvValue;
@@ -234,7 +234,7 @@ void setup(void) {
   sensors.getAddress(DallasAddress, 0);  // get address of device 0
   // reading temperatures here works if before RTC_init, but fails if after
   Serial.print("Dallas Address = ");
-  for (i = 0; i < 8; i++) {
+  for (int8_t i = 0; i < 8; i++) {
     Serial.print(DallasAddress[i]);
     if (i < 7) Serial.print(",");
   }
@@ -816,13 +816,13 @@ void runScreen(uint8_t currentTag) {
       sprintf(OutputValue, "%04i", Time);
       FTImpl.Cmd_Text(300, 90, 28, FT_OPT_CENTERX, "Duration (s):");
       FTImpl.Cmd_Text(450, 90, 28, FT_OPT_RIGHTX, OutputValue);
-      sprintf(OutputValue, "%03i", Intensity);
+      sprintf(OutputValue, "%03d", Intensity);
       FTImpl.Cmd_Text(300, 120, 28, FT_OPT_CENTERX, "Intensity (%):");
       FTImpl.Cmd_Text(450, 120, 28, FT_OPT_RIGHTX, OutputValue);
-      sprintf(OutputValue, "%03i", Current);
+      sprintf(OutputValue, "%03" PRId32, Current);
       FTImpl.Cmd_Text(300, 150, 28, FT_OPT_CENTERX, "Current (%):");
       FTImpl.Cmd_Text(450, 150, 28, FT_OPT_RIGHTX, OutputValue);
-      sprintf(OutputValue, "%03i", EnergyDensity);
+      sprintf(OutputValue, "%03" PRId32, EnergyDensity);
       FTImpl.Cmd_Text(300, 180, 28, FT_OPT_CENTERX, "Energy");
       FTImpl.Cmd_Text(300, 210, 28, FT_OPT_CENTERX, "Density (uW/mm2):");
       FTImpl.Cmd_Text(450, 210, 28, FT_OPT_RIGHTX, OutputValue);
@@ -867,14 +867,14 @@ void runScreen(uint8_t currentTag) {
       sprintf(uvPrintVal, "%05i",
               uvValue);  //%0 left pads the number with zeros, 5 = width,
                          // i = signed decimal integer
-      for (i = 0; i < 5; i++) {
+      for (int8_t i = 0; i < 5; i++) {
         uvPrint[i + 5] = uvPrintVal[i];
       }
       Serial.print(uvValue);
       LogFile2.print(uvValue);
       Serial.print(", t = ");
       LogFile2.print(", ");
-      i = 0;
+      int16_t i = 0;
       do  // fiddle to sort out SPI clash
       {
         i++;
@@ -965,7 +965,7 @@ void browseExperimentsScreen(uint8_t ignore) {
     }
   }
 
-  unsigned long numSavedExperiments = db.count();
+  int16_t numSavedExperiments = db.count();
   int16_t topDisplayedExperiment = numSavedExperiments;
   int16_t lastTopDisplayedExperiment = -1;
   int32_t experimentsToDisplay = 0;
@@ -1069,10 +1069,11 @@ void savedExperimentScreen() {
     const int kLeftColumnX = 30;
     const int kRightColumnX = 200;
     FTImpl.Cmd_Text(kLeftColumnX, 60, kFont, 0, "Energy:");
-    sprintf(labelBuffer, "%d:%02d", currentExp.time / 60, currentExp.time % 60);
+    sprintf(labelBuffer, "%" PRId32 ":%02" PRId32, currentExp.time / 60,
+            currentExp.time % 60);
     FTImpl.Cmd_Text(kRightColumnX, 60, kFont, 0, labelBuffer);
     FTImpl.Cmd_Text(kLeftColumnX, 60 + kSpacing, kFont, 0, "Irradience:");
-    sprintf(labelBuffer, "%ld %", currentExp.irradience);
+    sprintf(labelBuffer, "%ld %%", currentExp.irradience);
     FTImpl.Cmd_Text(kRightColumnX, 60 + kSpacing, kFont, 0, labelBuffer);
     FTImpl.Cmd_Text(kLeftColumnX, 60 + 2 * kSpacing, kFont, 0, "Energy:");
     sprintf(labelBuffer, "%ld mW/mm2", currentExp.energy);
@@ -1331,7 +1332,7 @@ void loop() {
         // strNewCurrent[0] = '\0';
         // Dec2Ascii(strNewCurrent,tmpNewCurrent);
         // strcat(strNewCurrent,"%");
-        sprintf(OutputValue, "%03i", tmpNewCurrent);
+        sprintf(OutputValue, "%03" PRId32, tmpNewCurrent);
         OutputValue[3] = '%';
         OutputValue[4] = '\0';
         // FTImpl.Cmd_Text(200, 20, 26, FT_OPT_CENTER, strNewCurrent);
@@ -1495,7 +1496,7 @@ void loop() {
             Serial.println(LogFileName);
             if (sd.exists(LogFileName)) {
               // copy file
-              if ((LogFile2 = sd.open(LogFileName)) == NULL) {
+              if (!(LogFile2 = sd.open(LogFileName))) {
                 Serial.print(F("Log file not found"));
               } else {
                 if (!digitalRead(
@@ -1503,15 +1504,17 @@ void loop() {
                 {
                   Serial.print(F("No flash drive found"));
                 } else {
-                  for (i = 11; i < 14; i++) FlashFile[i + 1] = LogFileName[i];
+                  for (int8_t i = 11; i < 14; i++)
+                    FlashFile[i + 1] = LogFileName[i];
                   flash_data(FlashFile, true);  // open file for write
                   delay(1000);  // Needs extra time to create the file.
                                 // Depends on flash drive used
                   logcopycount++;
                   LineCount = 0;
 
-                  for (i = 0; i < 80; i++)
-                    sdlogbuffer[i] = '\0';  // clear the log buffer
+                  // clear the log buffer
+                  memset(sdlogbuffer, '\0',
+                         sizeof(sdlogbuffer) / sizeof(*sdlogbuffer));
                   while (LogFile2.available() > 0) {
                     sdlog = LogFile2.read();
                     if (sdlog != char(13)) {
@@ -1557,7 +1560,7 @@ void loop() {
                       FTImpl.Finish();
 
                       flash_data(sdlogbuffer, false);
-                      for (i = 0; i < logpointer; i++) sdlogbuffer[i] = '\0';
+                      memset(sdlogbuffer, '\0', logpointer);
                       logpointer = 0;
                     }
                   }
@@ -1664,8 +1667,9 @@ int32_t Dec2Ascii(char *pSrc, int32_t value) {
   int16_t Length;
   char *pdst, charval;
   int32_t CurrVal = value, tmpval, i;
-  char tmparray[16], idx = 0;  // assumed that output string will not exceed 16
-                               // characters including null terminated character
+  int8_t idx = 0;
+  char tmparray[16];  // assumed that output string will not exceed 16
+                      // characters including null terminated character
 
   // get the length of the string
   Length = strlen(pSrc);
@@ -1743,8 +1747,6 @@ void Load_Jpeg(
 }
 
 void Loadimage2ram() {
-  static byte image_index = 0;  //,max_files=6;
-
   FtSd.OpenFile(Imagefile, imagename[Screen]);
   FTImpl.WriteCmd(CMD_LOADIMAGE);
   FTImpl.WriteCmd(
@@ -1953,7 +1955,7 @@ NotepadResult Notepad(const char *initialText) {
   uint8_t font = 27, offset = 50;
   int32_t tagoption;
 
-  i = 0;
+  size_t i = 0;
   // Clear then set Linebuffer
   for (tval = 0; tval < MAX_FT_LINES; tval++)
     memset(&Buffer.notepad[tval], '\0',
@@ -2244,4 +2246,5 @@ NotepadResult Notepad(const char *initialText) {
 
 Letsgetoutofhere:
   delay(10);
+  return NotepadResult::kNotepadResultSave;
 }
