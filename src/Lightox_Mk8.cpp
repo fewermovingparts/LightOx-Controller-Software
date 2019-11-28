@@ -1953,48 +1953,6 @@ struct {
   uint8_t Exit : 1;
 } Flag;
 
-static uint8_t sk = 0;
-/********API to return the assigned TAG value when penup,for the
- * primitives/widgets******/
-uint8_t Read_keys() {
-  static uint8_t Read_tag = 0, temp_tag = 0, ret_tag = 0;
-  Read_tag = FTImpl.Read(REG_TOUCH_TAG);
-  ret_tag = 0;
-  if (Read_tag != 0 && temp_tag != Read_tag) {
-    temp_tag = Read_tag;  // Load the Read tag to temp variable
-    sk = Read_tag;
-  }
-  if (Read_tag == 0) {
-    ret_tag = temp_tag;
-    temp_tag = 0;
-    sk = 0;
-  }
-  return ret_tag;
-}
-
-uint8_t Read_Keypad() {
-  static uint8_t Read_tag = 0, temp_tag = 0, touch_detect = 1;  // ret_tag=0,
-
-  Read_tag = FTImpl.Read(REG_TOUCH_TAG);
-  // ret_tag = 0;
-  if (FTImpl.IsPendown() == 0) touch_detect = 0;
-  if (Read_tag != 0)  // Allow if the Key is released
-  {
-    if (temp_tag != Read_tag && touch_detect == 0) {
-      temp_tag = Read_tag;  // Load the Read tag to temp variable
-      // FTImpl.PlaySound(100,0x51);
-      touch_detect = 1;
-    }
-  } else {
-    if (temp_tag != 0) {
-      Flag.Key_Detect = 1;  // global variable
-      Read_tag = temp_tag;
-    }
-    temp_tag = 0;
-  }
-  return Read_tag;
-}
-
 // API used to calculate the width of the character
 uint8_t Ft_Gpu_Rom_Font_WH(uint8_t Char, uint8_t font) {
   uint32_t ptr, Wptr;
