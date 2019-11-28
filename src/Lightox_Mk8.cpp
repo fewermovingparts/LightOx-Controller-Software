@@ -1955,18 +1955,17 @@ NotepadResult Notepad(const char *initialText) {
   uint8_t font = 27, offset = 50;
   int32_t tagoption;
 
-  size_t i = 0;
   // Clear then set Linebuffer
   for (tval = 0; tval < MAX_FT_LINES; tval++)
     memset(&Buffer.notepad[tval], '\0',
            sizeof(Buffer.notepad[tval]));  // set all of buffer to be null
 
-  for (i = 0; i < strlen(initialText); i++)  // load in the Project Description
+  
+  for (noofchars = 0; initialText[noofchars] != '\0' ; ++noofchars)  // load in the Project Description
   {
-    Buffer.notepad[0][i] = initialText[i];
+    Buffer.notepad[0][noofchars] = initialText[noofchars];
   }
-  noofchars = i;
-  i = 0;
+
   Serial.print("buffer: ");
   Serial.println(Buffer.notepad[Line]);
 
@@ -1978,8 +1977,6 @@ NotepadResult Notepad(const char *initialText) {
          1);  // For Cursor //noofchars was 0
   Disp_pos +=
       Ft_Gpu_Rom_Font_WH(Buffer.notepad[Line][0], Font);  // Update the Disp_Pos
-  noofchars += 1;                                         // for cursor
-                                                          /*enter*/
   Flag.Exit = 0;
 
   KeyPressTracker kpt(&FTImpl);
@@ -2012,7 +2009,7 @@ NotepadResult Notepad(const char *initialText) {
       FTImpl.Cmd_Swap();
       if (Screen == 3) {
         // Remove the _ cursor
-        Buffer.notepad[Line][noofchars - 1] = '\0';
+        Buffer.notepad[Line][noofchars] = '\0';
         return kNotepadResultSave;
       } else {
         if ((Buffer.notepad[0][0] == '3') && (Buffer.notepad[0][1] == '3') &&
@@ -2030,18 +2027,15 @@ NotepadResult Notepad(const char *initialText) {
         SPECIAL_FUN) {  // check any special function keys are pressed
       switch (buttonPressTag) {
         case BACK_SPACE:
-          if (noofchars > 1)  // check in the line there is any characters are
+          if (noofchars > 0)  // check in the line there is any characters are
                               // present,cursor not include
           {
             noofchars -= 1;  // clear the character in the buffer
             Disp_pos -=
                 Ft_Gpu_Rom_Font_WH(*(Buffer.notepad[Line] + noofchars - 1),
                                    Font);  // Update the Disp_Pos
-          } else {
-            if (Line >= (MAX_FT_LINES - 1))
-              Line--;
-            else
-              Line = 0;  // check the FT_LINES
+          } else if (Line != 0) {
+            Line--;
             noofchars =
                 strlen(Buffer.notepad[Line]);  // Read the len of the line
             for (tval = 0; tval < noofchars;
@@ -2051,8 +2045,8 @@ NotepadResult Notepad(const char *initialText) {
           }
           Buffer.temp =
               (Buffer.notepad[Line] + noofchars);  // load into temporary buffer
-          Buffer.temp[-1] = '_';                   // update the string
-          Buffer.temp[0] = '\0';
+          Buffer.temp[0] = '_';                   // update the string
+          Buffer.temp[1] = '\0';
           Serial.print("BACKSPACE buffer: ");
           Serial.println(Buffer.notepad[Line]);
           break;
@@ -2073,7 +2067,7 @@ NotepadResult Notepad(const char *initialText) {
           memset((Buffer.notepad[Line] + 0), '_', 1);  // For Cursor
           Disp_pos += Ft_Gpu_Rom_Font_WH(Buffer.notepad[Line][0],
                                          Font);  // Update the Disp_Pos
-          noofchars += 1;
+          noofchars = 0;
           break;
       }
     } else if (buttonPressTag >= 32)  // it is a standard character
@@ -2081,17 +2075,14 @@ NotepadResult Notepad(const char *initialText) {
       // String and Line Termination
 
       Disp_pos += Ft_Gpu_Rom_Font_WH(buttonPressTag, Font);  // update dis_pos
-      Buffer.temp = Buffer.notepad[Line] +
-                    strlen(Buffer.notepad[Line]);  // load into temporary buffer
       if (strlen(Buffer.notepad[0]) <
           40)  // attempt to limit the character count
       {
-        Buffer.temp[-1] =
-            buttonPressTag;     // update the string with new character
-        Buffer.temp[0] = '_';   // add the cursor
-        Buffer.temp[1] = '\0';  // add string terminator
-        //}  moved down
-        noofchars = strlen(Buffer.notepad[Line]);  // get the string len
+        noofchars += 1;
+        Buffer.notepad[Line][noofchars - 1] = buttonPressTag;
+        Buffer.notepad[Line][noofchars] = '_';
+        Buffer.notepad[Line][noofchars + 1] = '\0';
+
         Serial.print("Add char ");
         Serial.print(buttonPressTag);
         Serial.print(" buffer: ");
@@ -2246,5 +2237,5 @@ NotepadResult Notepad(const char *initialText) {
 
 Letsgetoutofhere:
   delay(10);
-  return NotepadResult::kNotepadResultSave;
+  return NotepadResult::kNotepadResultQuit;
 }
