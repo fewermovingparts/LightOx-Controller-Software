@@ -2023,13 +2023,15 @@ NotepadResult Notepad(const char *initialText) {
       goto Letsgetoutofhere;
     }
 
-    if (21 == buttonPressTag)  // save
+    if (21 == buttonPressTag && noofchars > 1)  // save
     {
       FTImpl.DLStart();
       FTImpl.ClearColorRGB(64, 64, 64);
       FTImpl.Clear(1, 1, 1);
       FTImpl.Cmd_Swap();
       if (Screen == 3) {
+        // Remove the _ cursor
+        Buffer.notepad[Line][noofchars - 1] = '\0';
         return kNotepadResultSave;
       } else {
         if ((Buffer.notepad[0][0] == '3') && (Buffer.notepad[0][1] == '3') &&
