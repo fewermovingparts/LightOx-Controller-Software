@@ -307,7 +307,7 @@ static int32_t energy = 300;
 enum HeldSlider { kHeldSliderTime, kHeldSliderIrradience, kHeldSliderEnergy };
 static HeldSlider heldSlider = kHeldSliderIrradience;
 
-enum DisplayScreen {
+enum class DisplayScreen {
   kDisplayScreenHome = 0,
   kDisplayScreenNewExp,
   kDisplayScreenBrowseExperiments,
@@ -317,7 +317,7 @@ enum DisplayScreen {
   kDisplayScreenNone,
 };
 bool screenJustSelected = true;
-DisplayScreen currentScreen = kDisplayScreenNone;  // Home;
+DisplayScreen currentScreen = DisplayScreen::kDisplayScreenNone;  // Home;
 const uint8_t kFont = 26;
 
 static void setNextScreen(DisplayScreen screen) {
@@ -381,7 +381,7 @@ void homeScreen() {
   Screen = 0;
   Loadimage2ram();
 
-  DisplayScreen nextScreen = kDisplayScreenHome;
+  DisplayScreen nextScreen = DisplayScreen::kDisplayScreenHome;
   KeyPressTracker kpt(&FTImpl);
   uint8_t selectedTag = 0;
   while (true) {
@@ -420,11 +420,11 @@ void homeScreen() {
     Serial.println(selectedTag);
 
     if (kNewExperimentTag == buttonPressTag) {
-      setNextScreen(kDisplayScreenNewExp);
+      setNextScreen(DisplayScreen::kDisplayScreenNewExp);
       Screen = 3;  // TODO remove once new exp screen updated
       break;
     } else if (kPrevExperimentTag == buttonPressTag) {
-      setNextScreen(kDisplayScreenBrowseExperiments);
+      setNextScreen(DisplayScreen::kDisplayScreenBrowseExperiments);
       break;
     }
   };
@@ -436,9 +436,9 @@ void newExpScreen(uint16_t currentScreen) {
     strncpy(currentExp.name, Buffer.notepad[0],
             min(sizeof(currentExp.name), sizeof(Buffer.notepad[0])));
     currentExp.name[sizeof(currentExp.name) - 1] = '\0';
-    setNextScreen(kDisplayScreenExpSettings);
+    setNextScreen(DisplayScreen::kDisplayScreenExpSettings);
   } else {
-    setNextScreen(kDisplayScreenHome);
+    setNextScreen(DisplayScreen::kDisplayScreenHome);
   }
 }
 
@@ -470,227 +470,245 @@ void saveCurrentExp() {
   db.addExperiment(exp);
 }
 
-void experimentSettingsScreen(uint8_t currentTag) {
-  FTImpl.Cmd_DLStart();
-  FTImpl.ClearColorRGB(255, 255, 255);
-  FTImpl.Clear(1, 1, 1);
-  FTImpl.ColorRGB(0, 0, 0);
-  FTImpl.TagMask(1);
+void experimentSettingsScreen() {
+  uint8_t currentTag = 0;
+  KeyPressTracker kpt(&FTImpl);
+  Serial.println("TRACE: experimentSettingsScreen()");
 
-  const uint8_t kRunTag = 14;
-  const uint8_t kBackTag = 15;
-  drawBottomRightButton(kRunTag, "Run", currentTag);
-  drawBottomLeftButton(kBackTag, "Back", currentTag);
+  while (DisplayScreen::kDisplayScreenExpSettings == currentScreen) {
+    FTImpl.Cmd_DLStart();
+    FTImpl.ClearColorRGB(255, 255, 255);
+    FTImpl.Clear(1, 1, 1);
+    FTImpl.ColorRGB(255, 255, 255);
+    FTImpl.TagMask(1);
 
-  // Todo add back button, currently the global quit button is displayed
+    const uint8_t kRunTag = 14;
+    const uint8_t kBackTag = 15;
+    drawBottomRightButton(kRunTag, "Run", currentTag);
+    drawBottomLeftButton(kBackTag, "Back", currentTag);
 
-  const int timeSliderMinsTag = 19;
-  const int timeSliderSecsTag = 20;
-  const int irradienceSliderTag = 21;
-  const int energySliderTag = 22;
-  const int kTimeHoldTag = 23;
-  const int kIrradienceHoldTag = 24;
-  const int kEnergyHoldTag = 25;
-  const int16_t sliderLeft = 40;
-  const int16_t sliderWidth = 300;
-  const int16_t topSliderY = 80;
-  const int16_t sliderYSpacing = 50;
-  // Slider definition and operation
-  /* Set the tracker for 3 sliders */
-  FTImpl.Cmd_Track(sliderLeft, topSliderY, sliderWidth / 2 - 20, 8,
-                   timeSliderMinsTag);  // duration in minutes
-  FTImpl.Cmd_Track(sliderLeft + sliderWidth / 2 + 20, topSliderY,
-                   sliderWidth / 2 - 20, 8,
-                   timeSliderSecsTag);  // duration in minutes
-  FTImpl.Cmd_Track(sliderLeft, topSliderY + sliderYSpacing, sliderWidth, 8,
-                   irradienceSliderTag);
-  FTImpl.Cmd_Track(sliderLeft, topSliderY + 2 * sliderYSpacing, sliderWidth, 8,
-                   energySliderTag);
+    // Todo add back button, currently the global quit button is displayed
 
-  int tagval = 0;
-  uint32_t TrackRegisterVal = FTImpl.Read32(REG_TRACKER);
-  tagval = TrackRegisterVal & 0xff;
+    const int timeSliderMinsTag = 19;
+    const int timeSliderSecsTag = 20;
+    const int irradienceSliderTag = 21;
+    const int energySliderTag = 22;
+    const int kTimeHoldTag = 23;
+    const int kIrradienceHoldTag = 24;
+    const int kEnergyHoldTag = 25;
+    const int16_t sliderLeft = 40;
+    const int16_t sliderWidth = 300;
+    const int16_t topSliderY = 86;
+    const int16_t sliderYSpacing = 50;
+    // Slider definition and operation
+    /* Set the tracker for 3 sliders */
+    FTImpl.Cmd_Track(sliderLeft, topSliderY, sliderWidth / 2 - 20, 8,
+                     timeSliderMinsTag);  // duration in minutes
+    FTImpl.Cmd_Track(sliderLeft + sliderWidth / 2 + 20, topSliderY,
+                     sliderWidth / 2 - 20, 8,
+                     timeSliderSecsTag);  // duration in minutes
+    FTImpl.Cmd_Track(sliderLeft, topSliderY + sliderYSpacing, sliderWidth, 8,
+                     irradienceSliderTag);
+    FTImpl.Cmd_Track(sliderLeft, topSliderY + 2 * sliderYSpacing, sliderWidth,
+                     8, energySliderTag);
 
-  int32_t sliderTrackerVal;
+    const uint8_t buttonPressTag = kpt.getButtonPressTag(currentTag);
+    uint32_t TrackRegisterVal = FTImpl.Read32(REG_TRACKER);
+    uint8_t currentSliderTag = TrackRegisterVal & 0xFF;
+    int32_t sliderTrackerVal = TrackRegisterVal >> 16;
+    // Serial.print("Button press tag: "); Serial.println(buttonPressTag);
+    // Serial.print("Track register tag: "); Serial.println(TrackRegisterVal &&
+    // 0xFF); Serial.print("Slider val: "); Serial.println(sliderTrackerVal);
 
-  const int32_t kMinIrradience = 5;
-  const int32_t kMaxIrradience = 100;  // needs units not percentage?
+    const int32_t kMinIrradience = 5;
+    const int32_t kMaxIrradience = 100;  // needs units not percentage?
 
-  const int32_t kMaxMinutes = 30;
-  const int32_t kMaxSeconds = 59;
-  if (timeSliderMinsTag == tagval || timeSliderSecsTag == tagval) {
-    if (timeSliderMinsTag == tagval) {
-      sliderTrackerVal = TrackRegisterVal >> 16;  // value is 0 - 65535
-      minutes = kMaxMinutes * sliderTrackerVal / 65535;
-    } else if (timeSliderSecsTag == tagval) {
-      sliderTrackerVal = TrackRegisterVal >> 16;
-      seconds = kMaxSeconds * sliderTrackerVal / 65535;
-    }
-    if (minutes == kMaxMinutes) {
-      seconds = 0;
-    } else if (minutes == 0) {
-      seconds = max(seconds, 1);
-    }
-    time = 60 * minutes + seconds;
-    if (kHeldSliderEnergy == heldSlider) {
-      if (time == 0) {
-        irradience = kMaxIrradience + 1;
+    const int32_t kMaxMinutes = 30;
+    const int32_t kMaxSeconds = 59;
+    if (kHeldSliderTime != heldSlider &&
+        (timeSliderMinsTag == currentSliderTag ||
+         timeSliderSecsTag == currentSliderTag)) {
+      if (timeSliderMinsTag == currentSliderTag) {
+        minutes = kMaxMinutes * sliderTrackerVal / 65535;
+      } else if (timeSliderSecsTag == currentSliderTag) {
+        seconds = kMaxSeconds * sliderTrackerVal / 65535;
+      }
+      if (minutes == kMaxMinutes) {
+        seconds = 0;
+      } else if (minutes == 0) {
+        seconds = max(seconds, 1);
+      }
+      time = 60 * minutes + seconds;
+      if (kHeldSliderEnergy == heldSlider) {
+        if (time == 0) {
+          irradience = kMaxIrradience + 1;
+        } else {
+          irradience = energy / time;
+        }
+        if (irradience > kMaxIrradience) {
+          irradience = kMaxIrradience;
+          time = energy / irradience;
+          minutes = time / 60;
+          seconds = time - 60 * minutes;
+        } else if (irradience < 1) {
+          irradience = 1;
+          time = energy / irradience;
+          minutes = time / 60;
+          seconds = time - 60 * minutes;
+        }
       } else {
-        irradience = energy / time;
-      }
-      if (irradience > kMaxIrradience) {
-        irradience = kMaxIrradience;
-        time = energy / irradience;
-        minutes = time / 60;
-        seconds = time - 60 * minutes;
-      } else if (irradience < 1) {
-        irradience = 1;
-        time = energy / irradience;
-        minutes = time / 60;
-        seconds = time - 60 * minutes;
-      }
-    } else {
-      energy = irradience * time;
-    }
-  } else if (irradienceSliderTag == tagval) {
-    sliderTrackerVal = TrackRegisterVal >> 16;  // value is 0 - 65535
-    irradience = kMaxIrradience * sliderTrackerVal / 65535;
-    irradience = max(irradience, kMinIrradience);
-
-    if (kHeldSliderEnergy == heldSlider) {
-      if (irradience == 0) {
-        time = 60 * kMaxMinutes + 1;
-      } else {
-        time = energy / irradience;
-      }
-      if (time > 60 * kMaxMinutes) {
-        time = 60 * kMaxMinutes;
-        irradience = energy / time;
-      } else if (time < 1) {
-        time = 1;
-        irradience = energy / time;
-      }
-      minutes = time / 60;
-      seconds = time - 60 * minutes;
-    } else {
-      energy = irradience * time;
-    }
-  } else if (energySliderTag == tagval) {
-    sliderTrackerVal = TrackRegisterVal >> 16;  // value is 0 - 65535
-    energy =
-        (kMaxMinutes * 60 * kMaxIrradience) / 16 * sliderTrackerVal /
-        (65535 / 16);  // TODO check as max minutes and max irradience change
-    energy = max(energy, 1);
-    if (kHeldSliderIrradience == heldSlider) {
-      if (irradience != 0) {
-        time = energy / irradience;
-      } else if (energy == 0) {
-        time = 0;
-      }
-      if (time > 60 * kMaxMinutes) {
-        time = 60 * kMaxMinutes;
-        energy = time * irradience;
-      } else if (time < 1) {
-        time = 1;
-        energy = time * irradience;
-      }
-      minutes = time / 60;
-      seconds = time - 60 * minutes;
-    } else if (time != 0) {
-      irradience = energy / time;
-      if (irradience > kMaxIrradience) {
-        irradience = kMaxIrradience;
-        energy = irradience * time;
-      } else if (irradience < kMinIrradience) {
-        irradience = 1;
         energy = irradience * time;
       }
+    } else if (kHeldSliderIrradience != heldSlider &&
+               irradienceSliderTag == currentSliderTag) {
+      irradience = kMaxIrradience * sliderTrackerVal / 65535;
+      irradience = max(irradience, kMinIrradience);
+
+      if (kHeldSliderEnergy == heldSlider) {
+        if (irradience == 0) {
+          time = 60 * kMaxMinutes + 1;
+        } else {
+          time = energy / irradience;
+        }
+        if (time > 60 * kMaxMinutes) {
+          time = 60 * kMaxMinutes;
+          irradience = energy / time;
+        } else if (time < 1) {
+          time = 1;
+          irradience = energy / time;
+        }
+        minutes = time / 60;
+        seconds = time - 60 * minutes;
+      } else {
+        energy = irradience * time;
+      }
+    } else if (kHeldSliderEnergy != heldSlider &&
+               energySliderTag == currentSliderTag) {
+      energy =
+          (kMaxMinutes * 60 * kMaxIrradience) / 16 * sliderTrackerVal /
+          (65535 / 16);  // TODO check as max minutes and max irradience change
+      energy = max(energy, 1);
+      if (kHeldSliderIrradience == heldSlider) {
+        if (irradience != 0) {
+          time = energy / irradience;
+        } else if (energy == 0) {
+          time = 0;
+        }
+        if (time > 60 * kMaxMinutes) {
+          time = 60 * kMaxMinutes;
+          energy = time * irradience;
+        } else if (time < 1) {
+          time = 1;
+          energy = time * irradience;
+        }
+        minutes = time / 60;
+        seconds = time - 60 * minutes;
+      } else if (time != 0) {
+        irradience = energy / time;
+        if (irradience > kMaxIrradience) {
+          irradience = kMaxIrradience;
+          energy = irradience * time;
+        } else if (irradience < kMinIrradience) {
+          irradience = 1;
+          energy = irradience * time;
+        }
+      }
     }
+
+    switch (buttonPressTag) {
+      case kIrradienceHoldTag:
+        heldSlider = kHeldSliderIrradience;
+        break;
+      case kEnergyHoldTag:
+        heldSlider = kHeldSliderEnergy;
+        break;
+      case kTimeHoldTag:
+        heldSlider = kHeldSliderTime;
+        break;
+      case kRunTag:
+        currentExp.energy = energy;
+        currentExp.irradience = irradience;
+        currentExp.time = time;
+        ReadTimeDate(currentExp.datetime);
+        saveCurrentExp();
+        setNextScreen(DisplayScreen::kDisplayScreenRun);
+        break;
+      case kBackTag:
+        setNextScreen(DisplayScreen::kDisplayScreenNewExp);
+        break;
+      default:
+        break;
+    }
+
+    const float kFullIrrandiencePowerPerArea = 60;
+
+    const uint16_t sliderHeight = 15;
+
+    // ColorRGB is active part of slider
+    // FGColor is slider handle
+    // BGColor is inactive part of slider
+    FTImpl.ColorRGB(kColourSeconday);
+    FTImpl.Cmd_FGColor(kColourPrimary);
+    FTImpl.Cmd_BGColor(kColourLight);
+    FTImpl.Tag(timeSliderMinsTag);
+    drawSliderOrProgress(sliderLeft, topSliderY, sliderWidth / 2 - 20,
+                         sliderHeight, minutes, kMaxMinutes,
+                         heldSlider == kHeldSliderTime);
+    FTImpl.Tag(timeSliderSecsTag);
+    drawSliderOrProgress(sliderLeft + sliderWidth / 2 + 20, topSliderY,
+                         sliderWidth / 2 - 20, sliderHeight, seconds,
+                         kMaxSeconds, heldSlider == kHeldSliderTime);
+    FTImpl.Tag(kTimeHoldTag);
+    drawHoldToggle(sliderLeft + sliderWidth + 60, topSliderY,
+                   heldSlider == kHeldSliderTime);
+
+    // TODO do zero values make sense...?
+    FTImpl.Tag(irradienceSliderTag);
+    drawSliderOrProgress(sliderLeft, topSliderY + sliderYSpacing, sliderWidth,
+                         sliderHeight, irradience, kMaxIrradience,
+                         heldSlider == kHeldSliderIrradience);
+    FTImpl.Tag(kIrradienceHoldTag);
+    drawHoldToggle(sliderLeft + sliderWidth + 60, topSliderY + sliderYSpacing,
+                   heldSlider == kHeldSliderIrradience);
+
+    FTImpl.Tag(energySliderTag);
+    drawSliderOrProgress(sliderLeft, topSliderY + 2 * sliderYSpacing,
+                         sliderWidth, sliderHeight, energy / 60,
+                         kMaxMinutes * kMaxIrradience,
+                         heldSlider == kHeldSliderEnergy);
+    FTImpl.Tag(kEnergyHoldTag);
+    drawHoldToggle(sliderLeft + sliderWidth + 60,
+                   topSliderY + 2 * sliderYSpacing,
+                   heldSlider == kHeldSliderEnergy);
+
+    FTImpl.TagMask(0);
+    FTImpl.ColorRGB(0x00, 0x00, 0x00);
+    showExpHeader(currentExp.name, nullptr);
+
+    char labelBuffer[30];
+    const int16_t kLabelYOffset = -18;
+    const int16_t kLabelXOffset = -10;
+    FTImpl.Cmd_Text(sliderLeft + sliderWidth + 60 + kLabelXOffset,
+                    topSliderY + kLabelYOffset, kFont, FT_OPT_CENTERY, "Hold");
+    sprintf(labelBuffer, "Duration: %2ld minutes", minutes);
+    FTImpl.Cmd_Text(sliderLeft + kLabelXOffset, topSliderY + kLabelYOffset,
+                    kFont, FT_OPT_CENTERY, labelBuffer);
+    sprintf(labelBuffer, "%2ld seconds", seconds);
+    FTImpl.Cmd_Text(sliderLeft + sliderWidth / 2 + 20 + kLabelXOffset,
+                    topSliderY + kLabelYOffset, kFont, FT_OPT_CENTERY,
+                    labelBuffer);
+
+    sprintf(labelBuffer, "Irradiance: %3ld mW/cm^2", irradience);
+    FTImpl.Cmd_Text(sliderLeft + kLabelXOffset,
+                    topSliderY + sliderYSpacing + kLabelYOffset, kFont,
+                    FT_OPT_CENTERY, labelBuffer);
+
+    sprintf(labelBuffer, "Energy: %7ld mJ/cm^2", energy);
+    FTImpl.Cmd_Text(sliderLeft + kLabelXOffset,
+                    topSliderY + 2 * sliderYSpacing + kLabelYOffset, kFont,
+                    FT_OPT_CENTERY, labelBuffer);
+    FTImpl.DLEnd();
   }
-
-  switch (currentTag) {
-    case kIrradienceHoldTag:
-      heldSlider = kHeldSliderIrradience;
-      break;
-    case kEnergyHoldTag:
-      heldSlider = kHeldSliderEnergy;
-      break;
-    case kTimeHoldTag:
-      heldSlider = kHeldSliderTime;
-      break;
-    case kRunTag:
-      currentExp.energy = energy;
-      currentExp.irradience = irradience;
-      currentExp.time = time;
-      ReadTimeDate(currentExp.datetime);
-      saveCurrentExp();
-      setNextScreen(kDisplayScreenRun);
-      break;
-    case kBackTag:
-      setNextScreen(kDisplayScreenNewExp);
-      break;
-    default:
-      break;
-  }
-
-  const float kFullIrrandiencePowerPerArea = 60;
-
-  const uint16_t sliderHeight = 15;
-
-  // ColorRGB is active part of slider
-  // FGColor is slider handle
-  // BGColor is inactive part of slider
-  FTImpl.ColorRGB(kColourSeconday);
-  FTImpl.Cmd_FGColor(kColourPrimary);
-  FTImpl.Cmd_BGColor(kColourLight);
-  FTImpl.Tag(timeSliderMinsTag);
-  drawSliderOrProgress(sliderLeft, topSliderY, sliderWidth / 2 - 20,
-                       sliderHeight, minutes, kMaxMinutes,
-                       heldSlider == kHeldSliderTime);
-  FTImpl.Tag(timeSliderSecsTag);
-  drawSliderOrProgress(sliderLeft + sliderWidth / 2 + 20, topSliderY,
-                       sliderWidth / 2 - 20, sliderHeight, seconds, kMaxSeconds,
-                       heldSlider == kHeldSliderTime);
-  FTImpl.Tag(kTimeHoldTag);
-  drawHoldToggle(sliderLeft + sliderWidth + 60, topSliderY,
-                 heldSlider == kHeldSliderTime);
-
-  // TODO do zero values make sense...?
-  FTImpl.Tag(irradienceSliderTag);
-  drawSliderOrProgress(sliderLeft, topSliderY + sliderYSpacing, sliderWidth,
-                       sliderHeight, irradience, kMaxIrradience,
-                       heldSlider == kHeldSliderIrradience);
-  FTImpl.Tag(kIrradienceHoldTag);
-  drawHoldToggle(sliderLeft + sliderWidth + 60, topSliderY + sliderYSpacing,
-                 heldSlider == kHeldSliderIrradience);
-
-  FTImpl.Tag(energySliderTag);
-  drawSliderOrProgress(sliderLeft, topSliderY + 2 * sliderYSpacing, sliderWidth,
-                       sliderHeight, energy / 60, kMaxMinutes * kMaxIrradience,
-                       heldSlider == kHeldSliderEnergy);
-  FTImpl.Tag(kEnergyHoldTag);
-  drawHoldToggle(sliderLeft + sliderWidth + 60, topSliderY + 2 * sliderYSpacing,
-                 heldSlider == kHeldSliderEnergy);
-
-  FTImpl.TagMask(0);
-  FTImpl.ColorRGB(0x00, 0x00, 0x00);
-  showExpHeader(currentExp.name, nullptr);
-
-  char labelBuffer[30];
-  sprintf(labelBuffer, "Duration: %2ld minutes", minutes);
-  FTImpl.Cmd_Text(sliderLeft, topSliderY - 20, kFont, FT_OPT_CENTERY,
-                  labelBuffer);
-  sprintf(labelBuffer, "%2ld seconds", seconds);
-  FTImpl.Cmd_Text(sliderLeft + sliderWidth / 2 + 20, topSliderY - 20, kFont,
-                  FT_OPT_CENTERY, labelBuffer);
-
-  sprintf(labelBuffer, "Irradiance: %3ld mW/cm^2", irradience);
-  FTImpl.Cmd_Text(sliderLeft, topSliderY + sliderYSpacing - 20, kFont,
-                  FT_OPT_CENTERY, labelBuffer);
-
-  sprintf(labelBuffer, "Energy: %7ld mJ/cm^2", energy);
-  FTImpl.Cmd_Text(sliderLeft, topSliderY + 2 * sliderYSpacing - 20, kFont,
-                  FT_OPT_CENTERY, labelBuffer);
 }
 
 // Trys to find a numbered log file that has not been used
@@ -931,7 +949,7 @@ EscapeNestedLoops:
   LogFile2.println(ConvertTimeDate(TimeAndDate));
   Serial.println(ConvertTimeDate(TimeAndDate));
   LogFile2.close();
-  setNextScreen(kDisplayScreenHome);
+  setNextScreen(DisplayScreen::kDisplayScreenHome);
 }
 
 // Needs topDisplayedExperiment global to return to correct point in the
@@ -1033,7 +1051,7 @@ void browseExperimentsScreen(uint8_t ignore) {
     uint8_t buttonPressTag = kpt.waitForChange(currentPressedTag);
 
     if (kBackButtonTag == buttonPressTag) {
-      setNextScreen(kDisplayScreenHome);
+      setNextScreen(DisplayScreen::kDisplayScreenHome);
       break;
     } else if (kNextPageTag == buttonPressTag) {
       if (topDisplayedExperiment - experimentsPerScreen > 0) {
@@ -1045,7 +1063,7 @@ void browseExperimentsScreen(uint8_t ignore) {
         topDisplayedExperiment += experimentsPerScreen;
       }
     } else if (0 < buttonPressTag && buttonPressTag < experimentsToDisplay) {
-      setNextScreen(kDisplayScreenShowSavedExp);
+      setNextScreen(DisplayScreen::kDisplayScreenShowSavedExp);
       currentExp.energy = 12345;
       // Set some magic global variable to the Saved Exp state
       // showSavedExpScreenExpIdx = browseExperimentsIdx[buttonPressTag - 1];
@@ -1090,14 +1108,15 @@ void savedExperimentScreen() {
       buttonPressTag = kpt.getButtonPressTag(currentPressedTag);
     } while (buttonPressTag == 0 && currentPressedTag == 0);
     if (kBackButtonTag == buttonPressTag) {
-      setNextScreen(kDisplayScreenBrowseExperiments);
+      setNextScreen(DisplayScreen::kDisplayScreenBrowseExperiments);
     } else if (kModifyButtonTag == buttonPressTag) {
       setNextScreen(
-          kDisplayScreenNewExp);  // TODO Need to keep the current experiment
-                                  // settings and pass in the name
+          DisplayScreen::kDisplayScreenNewExp);  // TODO Need to keep the
+                                                 // current experiment settings
+                                                 // and pass in the name
     } else if (kRunButtonTag == buttonPressTag) {
       ReadTimeDate(currentExp.datetime);
-      setNextScreen(kDisplayScreenRun);
+      setNextScreen(DisplayScreen::kDisplayScreenRun);
     }
   } while (buttonPressTag == 0);
 }
@@ -1123,7 +1142,7 @@ void loop() {
   bool DateRead = false;
 
   Screen = 0;  // 5;
-  setNextScreen(kDisplayScreenHome);
+  setNextScreen(DisplayScreen::kDisplayScreenHome);
 
   while (1) {
     FTImpl.TagMask(1);
@@ -1131,22 +1150,23 @@ void loop() {
     tagval = sTagxy.tag;
     FTImpl.ClearColorRGB(64, 64, 64);  // text colour?
 
-    if (kDisplayScreenHome == currentScreen) {
+    if (DisplayScreen::kDisplayScreenHome == currentScreen) {
       homeScreen();
       tagval = 0;  // TODO remove, avoids below code detecting a press
-    } else if (kDisplayScreenNewExp == currentScreen) {
+    } else if (DisplayScreen::kDisplayScreenNewExp == currentScreen) {
       newExpScreen(tagval);
       tagval = 0;  // TODO remove, avoids below code detecting a press
-    } else if (kDisplayScreenExpSettings == currentScreen) {
-      experimentSettingsScreen(tagval);
+    } else if (DisplayScreen::kDisplayScreenExpSettings == currentScreen) {
+      experimentSettingsScreen();
       tagval = 0;  // TODO remove
-    } else if (kDisplayScreenRun == currentScreen) {
+    } else if (DisplayScreen::kDisplayScreenRun == currentScreen) {
       runScreen(tagval);
       tagval = 0;  // TODO remove
-    } else if (kDisplayScreenBrowseExperiments == currentScreen) {
+    } else if (DisplayScreen::kDisplayScreenBrowseExperiments ==
+               currentScreen) {
       browseExperimentsScreen(tagval);
       tagval = 0;
-    } else if (kDisplayScreenShowSavedExp == currentScreen) {
+    } else if (DisplayScreen::kDisplayScreenShowSavedExp == currentScreen) {
       savedExperimentScreen();
       tagval = 0;
     } else {
@@ -1371,7 +1391,7 @@ void loop() {
     // End of display
     // plotting/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // Plot requests below here will nt get implemented.
-    if (currentScreen != kDisplayScreenHome) {
+    if (currentScreen != DisplayScreen::kDisplayScreenHome) {
       if (tagval == 11)  // Lightox main, run button picked
       {
         Screen = 3;  // select notepad before going to run screen
@@ -1394,7 +1414,7 @@ void loop() {
         FTImpl.Display();
         FTImpl.Cmd_Swap();
         FTImpl.Finish();
-        setNextScreen(kDisplayScreenHome);
+        setNextScreen(DisplayScreen::kDisplayScreenHome);
       }
 
       if (tagval == 14)  // Run / Save.............run option not coded yet
@@ -1432,7 +1452,7 @@ void loop() {
                       TimeAndDate[TimePointer[2]], TimeAndDate[TimePointer[3]],
                       TimeAndDate[TimePointer[4]], TimeAndDate[TimePointer[5]]);
           DateRead = false;
-          setNextScreen(kDisplayScreenHome);
+          setNextScreen(DisplayScreen::kDisplayScreenHome);
         }
       }
 
@@ -1997,7 +2017,7 @@ NotepadResult Notepad(const char *initialText) {
       FTImpl.ClearColorRGB(64, 64, 64);
       FTImpl.Clear(1, 1, 1);
       FTImpl.Cmd_Swap();
-      setNextScreen(kDisplayScreenHome);
+      setNextScreen(DisplayScreen::kDisplayScreenHome);
       goto Letsgetoutofhere;
     }
 
@@ -2016,7 +2036,7 @@ NotepadResult Notepad(const char *initialText) {
             (Buffer.notepad[0][2] == '3') && (Buffer.notepad[0][3] == '3')) {
           Screen = 5;  // Goto setings screen
         } else {
-          setNextScreen(kDisplayScreenHome);
+          setNextScreen(DisplayScreen::kDisplayScreenHome);
         }
         Loadimage2ram();
         goto Letsgetoutofhere;
