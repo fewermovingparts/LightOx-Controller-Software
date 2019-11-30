@@ -808,44 +808,6 @@ void runScreen(uint8_t currentTag) {
   uvPrintVal[0] = '\0';
 
   do {
-    if (!LidOpen) iTime = Time - int((millis() - msTime) / 1000);
-    TimeString[0] = char(48 + int(iTime / 600));
-    TimeString[1] = char(48 + int(iTime / 60) - 10 * int(iTime / 600));
-    TimeString[3] = char(48 + int((iTime - 60 * int(iTime / 60)) / 10));
-    TimeString[4] = char(48 + iTime - 60 * int(iTime / 60) -
-                         10 * int((iTime - 60 * int(iTime / 60)) / 10));
-    // Serial.println(TimeString);
-    FTImpl.Cmd_DLStart();
-    FTImpl.ClearColorRGB(255, 255, 255);
-    FTImpl.Clear(1, 1, 1);
-
-    showExpHeader(currentExp.name, currentExp.datetime);
-
-    FTImpl.ColorRGB(0x000000);
-    FTImpl.Cmd_Text(230, 60, 31, FT_OPT_CENTER, TimeString);
-
-    uint16_t tagoption = 0;  // no touch is default 3d effect and touch is flat
-                             // effect
-    if (13 == tagval) tagoption = FT_OPT_FLAT;
-    FTImpl.Tag(13);
-    FTImpl.Cmd_Button(63 - 47, 241 - 19, 94, 38, 26, tagoption, "Abort");
-
-    if (!LidOpen) {
-      sprintf(OutputValue, "%04i", Time);
-      FTImpl.Cmd_Text(300, 90, 28, FT_OPT_CENTERX, "Duration (s):");
-      FTImpl.Cmd_Text(450, 90, 28, FT_OPT_RIGHTX, OutputValue);
-      sprintf(OutputValue, "%03d", Intensity);
-      FTImpl.Cmd_Text(300, 120, 28, FT_OPT_CENTERX, "Intensity (%):");
-      FTImpl.Cmd_Text(450, 120, 28, FT_OPT_RIGHTX, OutputValue);
-      sprintf(OutputValue, "%03" PRId32, Current);
-      FTImpl.Cmd_Text(300, 150, 28, FT_OPT_CENTERX, "Current (%):");
-      FTImpl.Cmd_Text(450, 150, 28, FT_OPT_RIGHTX, OutputValue);
-      sprintf(OutputValue, "%03" PRId32, EnergyDensity);
-      FTImpl.Cmd_Text(300, 180, 28, FT_OPT_CENTERX, "Energy");
-      FTImpl.Cmd_Text(300, 210, 28, FT_OPT_CENTERX, "Density (uW/mm2):");
-      FTImpl.Cmd_Text(450, 210, 28, FT_OPT_RIGHTX, OutputValue);
-    }
-
     if (digitalRead(LID) && !LidOpen)  // lid just opened
     {
       LidOpen = true;
@@ -857,22 +819,15 @@ void runScreen(uint8_t currentTag) {
       // analogWrite(PWM,int((float)Intensity*2.55));              //reset
       // start case
     }
-    if (LidOpen) {
-      FTImpl.Cmd_Text(230, 120, 31, FT_OPT_CENTER, "Close Lid");
-    }
+
     if (LidOpen && !digitalRead(LID))  // lid was open, but now closed.
     {
       analogWrite(PWM, int((float)Intensity * 2.55));
       msTime = msTime + (millis() - msTimeLid);  // correct the time
       LidOpen = false;
     }
-    if (13 == tagval)  // abort pressed.
-    {
-      Serial.println("Abort hit");
-      LogFile2.println("Abort hit");
-      LidOpen = false;
-      goto EscapeNestedLoops;
-    }
+    if (!LidOpen) iTime = Time - int((millis() - msTime) / 1000);
+
     if (OldiTime != iTime)  // into a new second, so save results
     {
       OldiTime = iTime;
@@ -924,6 +879,58 @@ void runScreen(uint8_t currentTag) {
       } while (i > 0);
       Serial.println(iTime);
     }
+
+
+    TimeString[0] = char(48 + int(iTime / 600));
+    TimeString[1] = char(48 + int(iTime / 60) - 10 * int(iTime / 600));
+    TimeString[3] = char(48 + int((iTime - 60 * int(iTime / 60)) / 10));
+    TimeString[4] = char(48 + iTime - 60 * int(iTime / 60) -
+                         10 * int((iTime - 60 * int(iTime / 60)) / 10));
+    // Serial.println(TimeString);
+    FTImpl.Cmd_DLStart();
+    FTImpl.ClearColorRGB(255, 255, 255);
+    FTImpl.Clear(1, 1, 1);
+
+    showExpHeader(currentExp.name, currentExp.datetime);
+
+    FTImpl.ColorRGB(0x000000);
+    FTImpl.Cmd_Text(230, 60, 31, FT_OPT_CENTER, TimeString);
+
+    uint16_t tagoption = 0;  // no touch is default 3d effect and touch is flat
+                             // effect
+    if (13 == tagval) tagoption = FT_OPT_FLAT;
+    FTImpl.Tag(13);
+    FTImpl.Cmd_Button(63 - 47, 241 - 19, 94, 38, 26, tagoption, "Abort");
+
+    if (!LidOpen) {
+      sprintf(OutputValue, "%02" PRId32 ":%02" PRId32, currentExp.time / 60,
+              currentExp.time % 60);
+      FTImpl.Cmd_Text(300, 90, 28, FT_OPT_CENTERX, "Duration (m:s):");
+      FTImpl.Cmd_Text(450, 90, 28, FT_OPT_RIGHTX, OutputValue);
+      sprintf(OutputValue, "%03" PRId32, currentExp.irradience);
+      FTImpl.Cmd_Text(300, 120, 28, FT_OPT_CENTERX, "Intensity (mW/mm^2):");
+      FTImpl.Cmd_Text(450, 120, 28, FT_OPT_RIGHTX, OutputValue);
+      //      sprintf(OutputValue, "%03" PRId32, Current);
+      //      FTImpl.Cmd_Text(300, 150, 28, FT_OPT_CENTERX, "Current (%):");
+      //      FTImpl.Cmd_Text(450, 150, 28, FT_OPT_RIGHTX, OutputValue);
+      sprintf(OutputValue, "%03" PRId32, currentExp.energy);
+      FTImpl.Cmd_Text(300, 150, 28, FT_OPT_CENTERX, "Energy");
+      FTImpl.Cmd_Text(300, 180, 28, FT_OPT_CENTERX, "Density (mJ/mm^2):");
+      FTImpl.Cmd_Text(450, 180, 28, FT_OPT_RIGHTX, OutputValue);
+    }
+
+    if (LidOpen) {
+      FTImpl.Cmd_Text(230, 120, 31, FT_OPT_CENTER, "Close Lid");
+    }
+
+    if (13 == tagval)  // abort pressed.
+    {
+      Serial.println("Abort hit");
+      LogFile2.println("Abort hit");
+      LidOpen = false;
+      goto EscapeNestedLoops;
+    }
+
     if (!LidOpen) {
       FTImpl.Cmd_Text(100, 160, 29, FT_OPT_CENTER, tempPrint);
       FTImpl.Cmd_Text(100, 120, 29, FT_OPT_CENTER, uvPrint);
