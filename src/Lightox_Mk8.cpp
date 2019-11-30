@@ -325,7 +325,7 @@ static void setNextScreen(DisplayScreen screen) {
   currentScreen = screen;
 }
 
-const int16_t kBorderPixels = 16;
+const int16_t kBorderPixels = 10;
 const int16_t kBottomButtonHeight = 38;
 const int16_t kBottomButtonWidth = 94;
 
