@@ -1924,7 +1924,7 @@ String ConvertTimeDate(int TimeDate[]) {
       TimeDate[5] > 12 || TimeDate[6] < 0 || TimeDate[6] > 3000 ||
       TimeDate[2] < 0 || TimeDate[2] > 24 || TimeDate[1] < 0 ||
       TimeDate[1] > 60 || TimeDate[0] < 0 || TimeDate[0] > 60) {
-    return String("Invalid date/time");
+    return String("00/00/0000 00:00:00");
   }
   sprintf(buffer, "%02d/%02d/%4d %02d:%02d:%02d", TimeDate[4], TimeDate[5],
           TimeDate[6], TimeDate[2], TimeDate[1], TimeDate[0]);
