@@ -443,7 +443,7 @@ void newExpScreen(uint16_t currentScreen) {
 }
 
 void drawHoldToggle(uint16_t x, uint16_t y, bool on) {
-  const char *kHoldToggleText = "\xffhold";
+  const char *kHoldToggleText = "\xffHold";
   const uint16_t kHoldToggleWidth = 40;
   FTImpl.Cmd_Toggle(x, y, kHoldToggleWidth, kFont, 0, on ? UINT16_MAX : 0,
                     kHoldToggleText);
