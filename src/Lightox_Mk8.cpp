@@ -113,10 +113,17 @@ int TimePointer[] = {4, 5, 6, 2, 1, 0};
 int TimeMax[] = {31, 12, 99, 23, 59, 59};
 int TimeMin[] = {1, 1, 19, 0, 0, 0};
 int TimeDigit = 2;
+char ProjectString[] =
+    "WWWWWWWWWW"
+    "WWWWWWWWWW"
+    "WWWWWWWWWW"
+    "WWWWW67890";
+/*
 char ProjectString[150] = {'P', 'r', 'o', 'j', 'e', 'c', 't', ' ', 'd', 'e',
                            's', 'c', 'r', 'i', 'p', 't', 'i', 'o', 'n', ' ',
                            'i', 'n', ' ', 'u', 'p', ' ', 't', 'o', ' ', '4',
                            '0', ' ', 'c', 'h', 'a', 'r', 's', '\0'};
+                           */
 char LogFileName[20] = {'/', 'L', 'O', 'G', 'S', '/', 'L', 'O', 'G',
                         '0', '0', '0', '0', '0', '.', 'C', 'S', 'V'};
 int LogRef = 0, LineCount = 0;
@@ -413,7 +420,7 @@ void showExpHeader(const char *expName, int TimeDate[7]) {
     s.concat(ConvertTimeDate(TimeDate));
   }
 
-  uint8_t font = [&s]() {
+  const uint8_t font = [&s]() {
     const uint8_t fontList[] = {28, 27, 26};
     for (const auto &testFont : fontList) {
       if (stringPixelWidth(s.c_str(), testFont) <= headerWidth - 2) {
@@ -635,8 +642,8 @@ void experimentSettingsScreen() {
     } else if (kHeldSliderEnergy != heldSlider &&
                energySliderTag == currentSliderTag) {
       energy =
-          (kMaxMinutes * 60 * kMaxIrradience) / 16 * sliderTrackerVal /
-          (65535 / 16);  // TODO check as max minutes and max irradience change
+          (kMaxMinutes * (60 / 15) * kMaxIrradience) * sliderTrackerVal /
+          (65535 / 15);  // TODO check as max minutes and max irradience change
       energy = max(energy, 1);
       if (kHeldSliderIrradience == heldSlider) {
         if (irradience != 0) {
@@ -880,6 +887,7 @@ void runScreen(uint8_t currentTag) {
     }
     if (!LidOpen) iTime = Time - int((millis() - msTime) / 1000);
 
+    float Temperature;
     if (OldiTime != iTime)  // into a new second, so save results
     {
       OldiTime = iTime;
@@ -909,16 +917,9 @@ void runScreen(uint8_t currentTag) {
       delay(10);
       sensors.requestTemperaturesByAddress(
           DallasAddress);  // can take up to 750ms to get temperature?
-      float Temperature = sensors.getTempC(DallasAddress);
+      Temperature = sensors.getTempC(DallasAddress);
       if (Temperature != -127) {
         Serial.println(Temperature);
-        sprintf(tempPrintValA, "%03i", int(Temperature));
-        sprintf(tempPrintValB, "%01i",
-                int((Temperature - int(Temperature)) * 10));
-        for (it = 0; it < 3; it++) {
-          tempPrint[it + 7] = tempPrintValA[it];
-        }
-        tempPrint[11] = tempPrintValB[0];
       } else {
         Serial.println("Read Error");
       }
@@ -945,35 +946,59 @@ void runScreen(uint8_t currentTag) {
     showExpHeader(currentExp.name, currentExp.datetime);
 
     FTImpl.ColorRGB(0x000000);
-    FTImpl.Cmd_Text(230, 60, 31, FT_OPT_CENTER, TimeString);
+
+          const uint16_t leftColumnStart = 2 * kBorderPixels;
+
+    FTImpl.Cmd_Text(leftColumnStart, 60, 31, 0, "Time remaining:");
+    FTImpl.Cmd_Text(FT_DISPLAYWIDTH - leftColumnStart, 60, 31, FT_OPT_RIGHTX, TimeString);
 
     const uint8_t kAbortButtonTag = 13;
     drawBottomLeftButton(kAbortButtonTag, "Abort", currentPressedTag);
 
-    if (!LidOpen) {
-      sprintf(OutputValue, "%02" PRId32 ":%02" PRId32, currentExp.time / 60,
+    if (LidOpen) {
+      FTImpl.Cmd_Text(FT_DISPLAYWIDTH / 2, 120, 31, FT_OPT_CENTER, "Close Lid");
+    } else {
+      const uint8_t settingsFont = 27;
+      const uint16_t leftColumnValEnd = 2 * kBorderPixels + 256;
+
+      char labelBuffer[12] = {'\0'};
+      sprintf(labelBuffer, "%" PRId32 ":%02" PRId32, currentExp.time / 60,
               currentExp.time % 60);
-      FTImpl.Cmd_Text(300, 90, 28, FT_OPT_CENTERX, "Duration (m:s):");
-      FTImpl.Cmd_Text(450, 90, 28, FT_OPT_RIGHTX, OutputValue);
-      sprintf(OutputValue, "%03" PRId32, currentExp.irradience);
-      FTImpl.Cmd_Text(300, 120, 28, FT_OPT_CENTERX, "Intensity (mW/mm^2):");
-      FTImpl.Cmd_Text(450, 120, 28, FT_OPT_RIGHTX, OutputValue);
-      //      sprintf(OutputValue, "%03" PRId32, Current);
+      FTImpl.Cmd_Text(leftColumnStart, 120, settingsFont, 0, "Duration:");
+      FTImpl.Cmd_Text(leftColumnValEnd, 120, settingsFont, FT_OPT_RIGHTX,
+                      labelBuffer);
+      sprintf(labelBuffer, "%" PRId32 " mW/mm", currentExp.irradience);
+      FTImpl.Cmd_Text(leftColumnStart, 150, settingsFont, 0, "Intensity:");
+      const uint8_t superscriptCharWidth = Ft_Gpu_Rom_Font_WH('2', 26);
+      const uint16_t leftColValEndSS = leftColumnValEnd - 1 -superscriptCharWidth;
+      FTImpl.Cmd_Text(leftColValEndSS, 150, settingsFont, FT_OPT_RIGHTX,
+                      labelBuffer);
+      FTImpl.Cmd_Text(leftColValEndSS + 1, 150 - 3, 26, 0, "2");
+      //      sprintf(OutputValue, "%03" PRId32, Current);s
       //      FTImpl.Cmd_Text(300, 150, 28, FT_OPT_CENTERX, "Current (%):");
       //      FTImpl.Cmd_Text(450, 150, 28, FT_OPT_RIGHTX, OutputValue);
-      sprintf(OutputValue, "%03" PRId32, currentExp.energy);
-      FTImpl.Cmd_Text(300, 150, 28, FT_OPT_CENTERX, "Energy");
-      FTImpl.Cmd_Text(300, 180, 28, FT_OPT_CENTERX, "Density (mJ/mm^2):");
-      FTImpl.Cmd_Text(450, 180, 28, FT_OPT_RIGHTX, OutputValue);
-    }
+      sprintf(labelBuffer, "%" PRId32 " mJ/mm", currentExp.energy);
+      FTImpl.Cmd_Text(leftColumnStart, 150, settingsFont, 0, "");
+      FTImpl.Cmd_Text(leftColumnStart, 180, settingsFont, 0,
+                      "Energy density:");
+      FTImpl.Cmd_Text(leftColValEndSS, 180, settingsFont, FT_OPT_RIGHTX,
+                      labelBuffer);
+      FTImpl.Cmd_Text(leftColValEndSS + 1, 180 - 3, 26, 0, "2");
 
-    if (LidOpen) {
-      FTImpl.Cmd_Text(230, 120, 31, FT_OPT_CENTER, "Close Lid");
-    }
+      FTImpl.Cmd_Text(310, 160, 29, 0, "Temp:");
+      Temperature = 25.1;
+      if (Temperature != -127) {
+        sprintf_P(labelBuffer, PSTR("%d.%01d C"), int(Temperature), int(Temperature * 10) % 10);
+      } else {
+        strcpy_P(labelBuffer, PSTR("Error"));
+      }
+      FTImpl.Cmd_Text(FT_DISPLAYWIDTH - leftColumnStart, 160, 29, FT_OPT_RIGHTX,
+                      labelBuffer);
 
-    if (!LidOpen) {
-      FTImpl.Cmd_Text(100, 160, 29, FT_OPT_CENTER, tempPrint);
-      FTImpl.Cmd_Text(100, 120, 29, FT_OPT_CENTER, uvPrint);
+      FTImpl.Cmd_Text(340, 120, 29, 0, "UV:");
+      sprintf_P(labelBuffer, PSTR("%d"), uvValue);
+      FTImpl.Cmd_Text(FT_DISPLAYWIDTH - leftColumnStart, 120, 29, FT_OPT_RIGHTX,
+                      labelBuffer);
     }
     FTImpl.Display();
     FTImpl.Cmd_Swap();
