@@ -1973,15 +1973,14 @@ NotepadResult Notepad(const char *initialText) {
   uint8_t tval;
   uint16_t noofchars = 0, line2disp = 0, nextline = 0;
   uint8_t font = 27, offset = 50;
-  int32_t tagoption;
 
   // Clear then set Linebuffer
   for (tval = 0; tval < MAX_FT_LINES; tval++)
     memset(&Buffer.notepad[tval], '\0',
            sizeof(Buffer.notepad[tval]));  // set all of buffer to be null
 
-  
-  for (noofchars = 0; initialText[noofchars] != '\0' ; ++noofchars)  // load in the Project Description
+  for (noofchars = 0; initialText[noofchars] != '\0';
+       ++noofchars)  // load in the Project Description
   {
     Buffer.notepad[0][noofchars] = initialText[noofchars];
   }
@@ -2065,7 +2064,7 @@ NotepadResult Notepad(const char *initialText) {
           }
           Buffer.temp =
               (Buffer.notepad[Line] + noofchars);  // load into temporary buffer
-          Buffer.temp[0] = '_';                   // update the string
+          Buffer.temp[0] = '_';                    // update the string
           Buffer.temp[1] = '\0';
           Serial.print("BACKSPACE buffer: ");
           Serial.println(Buffer.notepad[Line]);
@@ -2215,20 +2214,10 @@ NotepadResult Notepad(const char *initialText) {
     }
 
     // assign tag value 21 to the save button
-    tagoption = 0;  // no touch is default 3d effect and touch is flat effect
-    if (21 == currentPressedTag) tagoption = FT_OPT_FLAT;
-    FTImpl.Tag(21);
-    if (Screen == 3) {
-      FTImpl.Cmd_Button(423 - 47, 241 - 19, 94, 38, 26, tagoption, "Save");
-    } else {
-      FTImpl.Cmd_Button(423 - 47, 241 - 19, 94, 38, 26, tagoption, "Enter");
-    }
-
+    drawBottomRightButton(21, Screen == 3 ? "Save" : "Enter",
+                          currentPressedTag);
     // assign tag value 13 to the quit button
-    tagoption = 0;  // no touch is default 3d effect and touch is flat effect
-    if (13 == currentPressedTag) tagoption = FT_OPT_FLAT;
-    FTImpl.Tag(13);
-    FTImpl.Cmd_Button(63 - 47, 241 - 19, 94, 38, 26, tagoption, "Quit");
+    drawBottomLeftButton(13, "Quit", currentPressedTag);
 
     FTImpl.TagMask(0);  // Disable the tag buffer updates
     FTImpl.ScissorXY(0, 0);
