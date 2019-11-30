@@ -896,11 +896,7 @@ void runScreen(uint8_t currentTag) {
     FTImpl.ColorRGB(0x000000);
     FTImpl.Cmd_Text(230, 60, 31, FT_OPT_CENTER, TimeString);
 
-    uint16_t tagoption = 0;  // no touch is default 3d effect and touch is flat
-                             // effect
-    if (13 == tagval) tagoption = FT_OPT_FLAT;
-    FTImpl.Tag(13);
-    FTImpl.Cmd_Button(63 - 47, 241 - 19, 94, 38, 26, tagoption, "Abort");
+    drawBottomLeftButton(13, "Abort", 0);
 
     if (!LidOpen) {
       sprintf(OutputValue, "%02" PRId32 ":%02" PRId32, currentExp.time / 60,
