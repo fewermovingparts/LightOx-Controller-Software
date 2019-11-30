@@ -372,7 +372,7 @@ void showExpHeader(const char *expName, int TimeDate[7]) {
     s.concat(" - ");
     s.concat(ConvertTimeDate(TimeDate));
   }
-  FTImpl.Cmd_Text(FT_DISPLAYWIDTH / 2, 30, 28, FT_OPT_CENTER, s.c_str());
+  FTImpl.Cmd_Text(FT_DISPLAYWIDTH / 2, 30, 27, FT_OPT_CENTER, s.c_str());
   FTImpl.RestoreContext();
 }
 
