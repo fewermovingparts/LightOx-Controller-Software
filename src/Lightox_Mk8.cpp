@@ -187,6 +187,45 @@ class KeyPressTracker {
   uint8_t buttonPressLastTag;
 };
 
+// Font width utility functions
+
+// get the address of the font width table
+static uint32_t getFontTableStartAddr() {
+  const uint32_t addr = FTImpl.Read32(0xffffc);
+  return addr;
+}
+
+// Internal: Get the width of a character in a given font
+static uint8_t getCharWidth(uint32_t fontTableStartAddr, uint8_t character,
+                            uint8_t font) {
+  const uint32_t charWidthAddr =
+      (fontTableStartAddr + (148 * (font - 16))) + character;
+  const uint8_t width = FTImpl.Read(charWidthAddr);
+  return width;
+}
+
+// API used to calculate the width of the character
+uint8_t Ft_Gpu_Rom_Font_WH(uint8_t Char, uint8_t font) {
+  const uint32_t ptr = getFontTableStartAddr();
+  // Read Width of the character
+  const uint32_t Wptr =
+      (ptr + (148 * (font - 16))) + Char;  // (table starts at font 16)
+  const uint8_t Width = FTImpl.Read(Wptr);
+  return Width;
+}
+
+// Calculate the display width of a null terminated string in a given font
+static int16_t stringPixelWidth(const char *str, uint8_t font) {
+  const uint32_t fontTableStartAddr = getFontTableStartAddr();
+  int16_t width = 0;
+  for (; *str; ++str) {
+    width += getCharWidth(fontTableStartAddr, *str, font);
+  }
+  return width;
+}
+
+// Screen calibration
+
 static bool getCalibrationRequired() {
   return EEPROM.read(kCalibrationAddress) != kCalibrationMagicByte;
 }
@@ -362,8 +401,9 @@ static void drawBottomRightButton(uint8_t tag, const char *label,
 
 void showExpHeader(const char *expName, int TimeDate[7]) {
   FTImpl.SaveContext();
-  FTImpl.ScissorXY(10, 10);
-  FTImpl.ScissorSize(FT_DISPLAYWIDTH - 2 * 10, 40);
+  FTImpl.ScissorXY(kBorderPixels, kBorderPixels);
+  const int16_t headerWidth = FT_DISPLAYWIDTH - 2 * kBorderPixels;
+  FTImpl.ScissorSize(headerWidth, 40);
   FTImpl.ClearColorRGB(kColourPrimary);
   FTImpl.Clear(1, 0, 0);
   FTImpl.ColorRGB(0xff, 0xff, 0xff);
@@ -372,7 +412,17 @@ void showExpHeader(const char *expName, int TimeDate[7]) {
     s.concat(" - ");
     s.concat(ConvertTimeDate(TimeDate));
   }
-  FTImpl.Cmd_Text(FT_DISPLAYWIDTH / 2, 30, 27, FT_OPT_CENTER, s.c_str());
+
+  uint8_t font = [&s]() {
+    const uint8_t fontList[] = {28, 27, 26};
+    for (const auto &testFont : fontList) {
+      if (stringPixelWidth(s.c_str(), testFont) <= headerWidth - 2) {
+        return testFont;
+      }
+    }
+    return uint8_t(26);
+  }();
+  FTImpl.Cmd_Text(FT_DISPLAYWIDTH / 2, 30, font, FT_OPT_CENTER, s.c_str());
   FTImpl.RestoreContext();
 }
 
@@ -807,6 +857,8 @@ void runScreen(uint8_t currentTag) {
   LidOpen = false;
   uvPrintVal[0] = '\0';
 
+  uint8_t currentPressedTag = 0;
+  KeyPressTracker kpt(&FTImpl);
   do {
     if (digitalRead(LID) && !LidOpen)  // lid just opened
     {
@@ -880,7 +932,6 @@ void runScreen(uint8_t currentTag) {
       Serial.println(iTime);
     }
 
-
     TimeString[0] = char(48 + int(iTime / 600));
     TimeString[1] = char(48 + int(iTime / 60) - 10 * int(iTime / 600));
     TimeString[3] = char(48 + int((iTime - 60 * int(iTime / 60)) / 10));
@@ -896,7 +947,8 @@ void runScreen(uint8_t currentTag) {
     FTImpl.ColorRGB(0x000000);
     FTImpl.Cmd_Text(230, 60, 31, FT_OPT_CENTER, TimeString);
 
-    drawBottomLeftButton(13, "Abort", 0);
+    const uint8_t kAbortButtonTag = 13;
+    drawBottomLeftButton(kAbortButtonTag, "Abort", currentPressedTag);
 
     if (!LidOpen) {
       sprintf(OutputValue, "%02" PRId32 ":%02" PRId32, currentExp.time / 60,
@@ -919,14 +971,6 @@ void runScreen(uint8_t currentTag) {
       FTImpl.Cmd_Text(230, 120, 31, FT_OPT_CENTER, "Close Lid");
     }
 
-    if (13 == tagval)  // abort pressed.
-    {
-      Serial.println("Abort hit");
-      LogFile2.println("Abort hit");
-      LidOpen = false;
-      goto EscapeNestedLoops;
-    }
-
     if (!LidOpen) {
       FTImpl.Cmd_Text(100, 160, 29, FT_OPT_CENTER, tempPrint);
       FTImpl.Cmd_Text(100, 120, 29, FT_OPT_CENTER, uvPrint);
@@ -934,10 +978,14 @@ void runScreen(uint8_t currentTag) {
     FTImpl.Display();
     FTImpl.Cmd_Swap();
     FTImpl.Finish();
-    FTImpl.TagMask(1);
-    sTagXY sTagxy;
-    FTImpl.GetTagXY(sTagxy);
-    tagval = sTagxy.tag;
+
+    const uint8_t buttonPressTag = kpt.getButtonPressTag(currentPressedTag);
+    if (kAbortButtonTag == buttonPressTag) {
+      Serial.println("Abort hit");
+      LogFile2.println("Abort hit");
+      LidOpen = false;
+      goto EscapeNestedLoops;
+    }
   } while (iTime > 0);  // end of do loop
 
   analogWrite(PWM, 0);
@@ -1957,17 +2005,6 @@ struct {
   uint8_t Exit : 1;
 } Flag;
 
-// API used to calculate the width of the character
-uint8_t Ft_Gpu_Rom_Font_WH(uint8_t Char, uint8_t font) {
-  uint32_t ptr, Wptr;
-  uint8_t Width = 0;
-  ptr = FTImpl.Read32(0xffffc);
-  // Read Width of the character
-  Wptr = (ptr + (148 * (font - 16))) + Char;  // (table starts at font 16)
-  Width = FTImpl.Read(Wptr);
-  return Width;
-}
-
 // Notepad buffer
 NotepadResult Notepad(const char *initialText) {
   /*local variables*/
@@ -1975,7 +2012,7 @@ NotepadResult Notepad(const char *initialText) {
   uint16_t Disp_pos = 0, But_opt;
   uint8_t tval;
   uint16_t noofchars = 0, line2disp = 0, nextline = 0;
-  uint8_t font = 27, offset = 50;
+  uint8_t font = 26, offset = 50;
 
   // Clear then set Linebuffer
   for (tval = 0; tval < MAX_FT_LINES; tval++)
