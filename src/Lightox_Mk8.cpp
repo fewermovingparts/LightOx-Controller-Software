@@ -151,6 +151,7 @@ struct Experiment {
 };
 
 Experiment currentExp;
+int16_t browseExperimentsStartExpIdx = -1;
 
 // Issues including FTImpl twice so this need to be here :(
 class KeyPressTracker {
@@ -428,9 +429,12 @@ void showExpHeader(const char *expName, int TimeDate[7]) {
 }
 
 void homeScreen() {
-  Serial.println("TRACE: homeScren()");
+  Serial.println("TRACE: homeScreen()");
   Screen = 0;
   Loadimage2ram();
+
+  // Reset some global state
+  browseExperimentsStartExpIdx = -1;
 
   DisplayScreen nextScreen = DisplayScreen::kDisplayScreenHome;
   KeyPressTracker kpt(&FTImpl);
@@ -472,6 +476,10 @@ void homeScreen() {
 
     if (kNewExperimentTag == buttonPressTag) {
       setNextScreen(DisplayScreen::kDisplayScreenNewExp);
+      strcpy(currentExp.name, ProjectString);
+      currentExp.irradience = kDefaultIrradience;
+      currentExp.time = kDefaultTime;
+      currentExp.energy = kDefaultTime * kDefaultIrradience;
       Screen = 3;  // TODO remove once new exp screen updated
       break;
     } else if (kPrevExperimentTag == buttonPressTag) {
@@ -482,14 +490,11 @@ void homeScreen() {
 }
 
 void newExpScreen(uint16_t currentScreen) {
-  NotepadResult result = Notepad(ProjectString);
+  NotepadResult result = Notepad(currentExp.name);
   if (kNotepadResultSave == result) {
     strncpy(currentExp.name, Buffer.notepad[0],
             min(sizeof(currentExp.name), sizeof(Buffer.notepad[0])));
     currentExp.name[sizeof(currentExp.name) - 1] = '\0';
-    currentExp.irradience = kDefaultIrradience;
-    currentExp.time = kDefaultTime;
-    currentExp.energy = kDefaultTime * kDefaultIrradience;
     setNextScreen(DisplayScreen::kDisplayScreenExpSettings);
   } else {
     setNextScreen(DisplayScreen::kDisplayScreenHome);
@@ -529,9 +534,9 @@ void experimentSettingsScreen() {
   KeyPressTracker kpt(&FTImpl);
   Serial.println("TRACE: experimentSettingsScreen()");
 
-  int32_t& time = currentExp.time;
-  int32_t& irradience = currentExp.irradience;
-  int32_t& energy = currentExp.energy;
+  int32_t &time = currentExp.time;
+  int32_t &irradience = currentExp.irradience;
+  int32_t &energy = currentExp.energy;
 
   while (DisplayScreen::kDisplayScreenExpSettings == currentScreen) {
     FTImpl.Cmd_DLStart();
@@ -849,13 +854,13 @@ void runScreen(uint8_t currentTag) {
 
   showSpinner("Starting, please wait....");
 
-  delay(1000);                                     // TODO return to 10000
-  analogWrite(PWM, int((float)currentExp.irradience * 2.55));  // LEDs power setting
+  delay(1000);  // TODO return to 10000
+  analogWrite(PWM,
+              int((float)currentExp.irradience * 2.55));  // LEDs power setting
 
   msTime = millis();
 
   OldiTime = -1;
-  uint8_t tagval = 42;
   LidOpen = false;
   uvPrintVal[0] = '\0';
 
@@ -942,7 +947,7 @@ void runScreen(uint8_t currentTag) {
 
     char labelBuffer[12] = {'\0'};
     FTImpl.Cmd_Text(leftColumnStart, 60, 31, 0, "Time remaining:");
-    sprintf_P(labelBuffer, PSTR("%" PRId32 ":%02" PRId32), iTime / 60, iTime % 60);
+    sprintf_P(labelBuffer, PSTR("%d:%02d"), iTime / 60, iTime % 60);
     FTImpl.Cmd_Text(FT_DISPLAYWIDTH - leftColumnStart, 60, 31, FT_OPT_RIGHTX,
                     labelBuffer);
 
@@ -951,7 +956,6 @@ void runScreen(uint8_t currentTag) {
     } else {
       const uint8_t settingsFont = 27;
       const uint16_t leftColumnValEnd = 2 * kBorderPixels + 256;
-
 
       sprintf(labelBuffer, "%" PRId32 ":%02" PRId32, currentExp.time / 60,
               currentExp.time % 60);
@@ -1077,7 +1081,9 @@ void browseExperimentsScreen(uint8_t ignore) {
   }
 
   int16_t numSavedExperiments = db.count();
-  int16_t topDisplayedExperiment = numSavedExperiments;
+  int16_t topDisplayedExperiment = browseExperimentsStartExpIdx < 1
+                                       ? numSavedExperiments
+                                       : browseExperimentsStartExpIdx;
   int16_t lastTopDisplayedExperiment = -1;
   int32_t experimentsToDisplay = 0;
   uint8_t currentPressedTag = 0;
@@ -1174,13 +1180,13 @@ void browseExperimentsScreen(uint8_t ignore) {
       const uint8_t selectedExp = buttonPressTag - 1;
       strcpy(currentExp.name, browseExperiments[selectedExp].name);
       for (int i = 0; i < 7; ++i) {
-        currentExp.datetime[i] =  browseExperiments[selectedExp].datetime[i];
+        currentExp.datetime[i] = browseExperiments[selectedExp].datetime[i];
       }
       currentExp.irradience = browseExperiments[selectedExp].irradience;
       currentExp.time = browseExperiments[selectedExp].time;
       currentExp.energy = currentExp.irradience * currentExp.time;
       // Set some magic global variable to the Saved Exp state
-      // showSavedExpScreenExpIdx = browseExperimentsIdx[buttonPressTag - 1];
+      browseExperimentsStartExpIdx = lastTopDisplayedExperiment;
       break;
     }
   };
@@ -1210,7 +1216,8 @@ void savedExperimentScreen() {
     FTImpl.Cmd_Text(kLeftColumnX, 60 + kSpacing, kFont, 0, "Irradience:");
     sprintf(labelBuffer, "%ld %%", currentExp.irradience);
     FTImpl.Cmd_Text(kRightColumnX, 60 + kSpacing, kFont, 0, labelBuffer);
-    FTImpl.Cmd_Text(kLeftColumnX, 60 + 2 * kSpacing, kFont, 0, "Energy Density:");
+    FTImpl.Cmd_Text(kLeftColumnX, 60 + 2 * kSpacing, kFont, 0,
+                    "Energy Density:");
     sprintf(labelBuffer, "%ld mJ/mm2", currentExp.energy);
     FTImpl.Cmd_Text(kRightColumnX, 60 + 2 * kSpacing, kFont, 0, labelBuffer);
 
@@ -2084,7 +2091,7 @@ NotepadResult Notepad(const char *initialText) {
       FTImpl.ClearColorRGB(64, 64, 64);
       FTImpl.Clear(1, 1, 1);
       FTImpl.Cmd_Swap();
-      if (Screen == 3) {
+      if (DisplayScreen::kDisplayScreenNewExp == currentScreen) {
         // Remove the _ cursor
         Buffer.notepad[Line][noofchars] = '\0';
         return kNotepadResultSave;
@@ -2272,8 +2279,10 @@ NotepadResult Notepad(const char *initialText) {
     }
 
     // assign tag value 21 to the save button
-    drawBottomRightButton(21, Screen == 3 ? "Save" : "Enter",
-                          currentPressedTag);
+    drawBottomRightButton(
+        21,
+        DisplayScreen::kDisplayScreenNewExp == currentScreen ? "Save" : "Enter",
+        currentPressedTag);
     // assign tag value 13 to the quit button
     drawBottomLeftButton(13, "Quit", currentPressedTag);
 
