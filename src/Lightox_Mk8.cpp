@@ -338,6 +338,10 @@ void setup(void) {
   } else {
     loadCalibration();
   }
+
+  Screen = 0;
+  Loadimage2ram();
+
   Serial.println("Setup complete.....");
 }
 
@@ -430,8 +434,6 @@ void showExpHeader(const char *expName, int TimeDate[7]) {
 
 void homeScreen() {
   Serial.println("TRACE: homeScreen()");
-  Screen = 0;
-  Loadimage2ram();
 
   // Reset some global state
   browseExperimentsStartExpIdx = -1;
@@ -1522,7 +1524,6 @@ void loop() {
       if (tagval == 12)  // Options
       {
         Screen = 1;
-        Loadimage2ram();
       }
 
       if (tagval == 13)  // quit
@@ -1557,7 +1558,6 @@ void loop() {
         {
           Serial.println("Run");
           Screen = 6;
-          Loadimage2ram();
         } else if (Screen == 2)  //=Date
         {
           Serial.println("Save date");
@@ -1572,13 +1572,11 @@ void loop() {
       if (tagval == 15)  // Set date and time
       {
         Screen = 2;
-        Loadimage2ram();
       }
 
       if (tagval == 16)  // Copy files
       {
         Screen = 9;
-        Loadimage2ram();
         LogRef = 0;
         logcopycount = 0;
 
@@ -1703,7 +1701,6 @@ void loop() {
               LogRef = 0;
               delay(2000);
               Screen = 1;
-              Loadimage2ram();
             }
           } while (LogRef > 0);
 
@@ -1738,7 +1735,6 @@ void loop() {
       if (tagval == 17)  // Product info
       {
         Screen = 10;
-        Loadimage2ram();
       }
 
       if (tagval == 18)  // More
@@ -1754,7 +1750,6 @@ void loop() {
         NewCurrent = Float;
         NC = NewCurrent;
         Screen = 5;
-        Loadimage2ram();
         if (FirstPass) {
           FirstPass = false;
         } else {
@@ -2102,7 +2097,6 @@ NotepadResult Notepad(const char *initialText) {
         } else {
           setNextScreen(DisplayScreen::kDisplayScreenHome);
         }
-        Loadimage2ram();
         goto Letsgetoutofhere;
       }
     }
