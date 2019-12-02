@@ -90,11 +90,9 @@ int Screen = 0;  // Screen =   0             1          2            3 4 5 6
 // char imagename[7][12] =
 // {"Lightox.jpg","Menu.jpg","Date.jpg","Project.jpg","TIE.jpg","Sam.jpg","Carrie.jpg"};
 boolean RecordOn = true;
-int Intensity = 100;
 int32_t Current = 100, NewCurrent, NC;  // Current in %
 float SetCurrent = 1.2 / 5.0 * 255;     // SetCurrent in 0-5V converted to 0-255
-float Energy = 0;
-int Time = 300, iTime, ds, OldiTime, it;
+int iTime, ds, OldiTime, it;
 unsigned long msTime, msTimeLid;
 int uv2 = 0;
 uint16_t uvValue;
@@ -104,7 +102,6 @@ char tempPrintValA[3], tempPrintValB[3];
 char tempPrint[15] = {'t', 'e', 'm', 'p', ' ', '=', ' ',
                       '0', '0', '0', '.', '0', '\0'};
 char OutputValue[5];
-char TimeString[6] = "00:00";
 // int TimeStepUp = 1, TimeStepUpCount = 0, TimeStepDown = 1, TimeStepDownCount
 // = 0;
 char TimeDateString[18];
@@ -141,6 +138,9 @@ const byte kCalibrationMagicByte = 0xAA;
 const int kCalibrationNumBytes = 24;
 bool needsCalibration = true;
 bool FirstPass = false, LidOpen = false;
+
+const int32_t kDefaultIrradience = 50;
+const int32_t kDefaultTime = 5 * 60;
 
 struct Experiment {
   char name[41];
@@ -313,8 +313,8 @@ void setup(void) {
   // EnergyDensity = 188;
   Serial.print("Stored Energy Density = ");
   Serial.println(EnergyDensity);
-  Energy =
-      (float)Time * (float)EnergyDensity / 1000.0 * (float)Intensity / 100.0;
+  // Energy =
+  //    (float)Time * (float)EnergyDensity / 1000.0 * (float)Intensity / 100.0;
 
   pinMode(ADM, OUTPUT);
   pinMode(PWM, OUTPUT);
@@ -343,12 +343,6 @@ void setup(void) {
 const uint32_t kColourPrimary = 0x2A5673 + 0x001000;  // dark greeny
 const uint32_t kColourSeconday = 0x6A8CA5;            // lighter
 const uint32_t kColourLight = 0xD2D8E1;
-
-static int32_t minutes = 5;
-static int32_t seconds = 0;
-static int32_t time = 60;
-static int32_t irradience = 50;
-static int32_t energy = 300;
 
 enum HeldSlider { kHeldSliderTime, kHeldSliderIrradience, kHeldSliderEnergy };
 static HeldSlider heldSlider = kHeldSliderIrradience;
@@ -493,6 +487,9 @@ void newExpScreen(uint16_t currentScreen) {
     strncpy(currentExp.name, Buffer.notepad[0],
             min(sizeof(currentExp.name), sizeof(Buffer.notepad[0])));
     currentExp.name[sizeof(currentExp.name) - 1] = '\0';
+    currentExp.irradience = kDefaultIrradience;
+    currentExp.time = kDefaultTime;
+    currentExp.energy = kDefaultTime * kDefaultIrradience;
     setNextScreen(DisplayScreen::kDisplayScreenExpSettings);
   } else {
     setNextScreen(DisplayScreen::kDisplayScreenHome);
@@ -531,6 +528,10 @@ void experimentSettingsScreen() {
   uint8_t currentTag = 0;
   KeyPressTracker kpt(&FTImpl);
   Serial.println("TRACE: experimentSettingsScreen()");
+
+  int32_t& time = currentExp.time;
+  int32_t& irradience = currentExp.irradience;
+  int32_t& energy = currentExp.energy;
 
   while (DisplayScreen::kDisplayScreenExpSettings == currentScreen) {
     FTImpl.Cmd_DLStart();
@@ -582,6 +583,9 @@ void experimentSettingsScreen() {
 
     const int32_t kMaxMinutes = 30;
     const int32_t kMaxSeconds = 59;
+    int32_t minutes = time / 60;
+    int32_t seconds = time - minutes * 60;
+
     if (kHeldSliderTime != heldSlider &&
         (timeSliderMinsTag == currentSliderTag ||
          timeSliderSecsTag == currentSliderTag)) {
@@ -605,13 +609,9 @@ void experimentSettingsScreen() {
         if (irradience > kMaxIrradience) {
           irradience = kMaxIrradience;
           time = energy / irradience;
-          minutes = time / 60;
-          seconds = time - 60 * minutes;
         } else if (irradience < 1) {
           irradience = 1;
           time = energy / irradience;
-          minutes = time / 60;
-          seconds = time - 60 * minutes;
         }
       } else {
         energy = irradience * time;
@@ -634,8 +634,6 @@ void experimentSettingsScreen() {
           time = 1;
           irradience = energy / time;
         }
-        minutes = time / 60;
-        seconds = time - 60 * minutes;
       } else {
         energy = irradience * time;
       }
@@ -658,8 +656,6 @@ void experimentSettingsScreen() {
           time = 1;
           energy = time * irradience;
         }
-        minutes = time / 60;
-        seconds = time - 60 * minutes;
       } else if (time != 0) {
         irradience = energy / time;
         if (irradience > kMaxIrradience) {
@@ -671,6 +667,8 @@ void experimentSettingsScreen() {
         }
       }
     }
+    minutes = time / 60;
+    seconds = time - minutes * 60;
 
     switch (buttonPressTag) {
       case kIrradienceHoldTag:
@@ -683,9 +681,6 @@ void experimentSettingsScreen() {
         heldSlider = kHeldSliderTime;
         break;
       case kRunTag:
-        currentExp.energy = energy;
-        currentExp.irradience = irradience;
-        currentExp.time = time;
         ReadTimeDate(currentExp.datetime);
         saveCurrentExp();
         setNextScreen(DisplayScreen::kDisplayScreenRun);
@@ -791,19 +786,19 @@ void startRunLog(File logFile) {
   logFile.println("Deliberately left blank");  // Sometimes lose first
                                                // line, so make it a dummy.
   logFile.print("Test ID: ");                  // Record project data
-  logFile.println(ProjectString);
+  logFile.println(currentExp.name);
   logFile.print("Duration (s): ");
-  logFile.print(Time);
+  logFile.print(currentExp.time);
   logFile.print(", ");
   logFile.print("Selected Intensity (%): ");
-  logFile.print(Intensity);
+  logFile.print(currentExp.irradience);
   logFile.print(", ");
   logFile.print("Selected Current (%): ");
   logFile.println(Current);
   logFile.print("Calculation power density (uW/mm2): ");
   logFile.println(EnergyDensity);
   logFile.print("Energy applied (mW/cm2): ");
-  logFile.println(Energy);
+  logFile.println(currentExp.energy);
   logFile.print("Start Date/Time: ");
   logFile.println(ConvertTimeDate(TimeAndDate));
   logFile.println("Time (s), UV (relative), Temperature (Deg C)");
@@ -855,7 +850,7 @@ void runScreen(uint8_t currentTag) {
   showSpinner("Starting, please wait....");
 
   delay(1000);                                     // TODO return to 10000
-  analogWrite(PWM, int((float)Intensity * 2.55));  // LEDs power setting
+  analogWrite(PWM, int((float)currentExp.irradience * 2.55));  // LEDs power setting
 
   msTime = millis();
 
@@ -881,18 +876,18 @@ void runScreen(uint8_t currentTag) {
 
     if (LidOpen && !digitalRead(LID))  // lid was open, but now closed.
     {
-      analogWrite(PWM, int((float)Intensity * 2.55));
+      analogWrite(PWM, int((float)currentExp.irradience * 2.55));
       msTime = msTime + (millis() - msTimeLid);  // correct the time
       LidOpen = false;
     }
-    if (!LidOpen) iTime = Time - int((millis() - msTime) / 1000);
+    if (!LidOpen) iTime = currentExp.time - int((millis() - msTime) / 1000);
 
     float Temperature;
     if (OldiTime != iTime)  // into a new second, so save results
     {
       OldiTime = iTime;
       Serial.print("Time = ");
-      Serial.print(Time - iTime);
+      Serial.print(currentExp.time - iTime);
       LogFile2.print(iTime);
       Serial.print(", uv = ");
       LogFile2.print(", ");
@@ -933,27 +928,23 @@ void runScreen(uint8_t currentTag) {
       Serial.println(iTime);
     }
 
-    TimeString[0] = char(48 + int(iTime / 600));
-    TimeString[1] = char(48 + int(iTime / 60) - 10 * int(iTime / 600));
-    TimeString[3] = char(48 + int((iTime - 60 * int(iTime / 60)) / 10));
-    TimeString[4] = char(48 + iTime - 60 * int(iTime / 60) -
-                         10 * int((iTime - 60 * int(iTime / 60)) / 10));
-    // Serial.println(TimeString);
     FTImpl.Cmd_DLStart();
     FTImpl.ClearColorRGB(255, 255, 255);
     FTImpl.Clear(1, 1, 1);
 
     showExpHeader(currentExp.name, currentExp.datetime);
+    const uint8_t kAbortButtonTag = 13;
+    drawBottomMiddleButton(kAbortButtonTag, "Abort", currentPressedTag);
 
     FTImpl.ColorRGB(0x000000);
 
-          const uint16_t leftColumnStart = 2 * kBorderPixels;
+    const uint16_t leftColumnStart = 2 * kBorderPixels;
 
+    char labelBuffer[12] = {'\0'};
     FTImpl.Cmd_Text(leftColumnStart, 60, 31, 0, "Time remaining:");
-    FTImpl.Cmd_Text(FT_DISPLAYWIDTH - leftColumnStart, 60, 31, FT_OPT_RIGHTX, TimeString);
-
-    const uint8_t kAbortButtonTag = 13;
-    drawBottomLeftButton(kAbortButtonTag, "Abort", currentPressedTag);
+    sprintf_P(labelBuffer, PSTR("%" PRId32 ":%02" PRId32), iTime / 60, iTime % 60);
+    FTImpl.Cmd_Text(FT_DISPLAYWIDTH - leftColumnStart, 60, 31, FT_OPT_RIGHTX,
+                    labelBuffer);
 
     if (LidOpen) {
       FTImpl.Cmd_Text(FT_DISPLAYWIDTH / 2, 120, 31, FT_OPT_CENTER, "Close Lid");
@@ -961,7 +952,7 @@ void runScreen(uint8_t currentTag) {
       const uint8_t settingsFont = 27;
       const uint16_t leftColumnValEnd = 2 * kBorderPixels + 256;
 
-      char labelBuffer[12] = {'\0'};
+
       sprintf(labelBuffer, "%" PRId32 ":%02" PRId32, currentExp.time / 60,
               currentExp.time % 60);
       FTImpl.Cmd_Text(leftColumnStart, 120, settingsFont, 0, "Duration:");
@@ -970,7 +961,8 @@ void runScreen(uint8_t currentTag) {
       sprintf(labelBuffer, "%" PRId32 " mW/mm", currentExp.irradience);
       FTImpl.Cmd_Text(leftColumnStart, 150, settingsFont, 0, "Intensity:");
       const uint8_t superscriptCharWidth = Ft_Gpu_Rom_Font_WH('2', 26);
-      const uint16_t leftColValEndSS = leftColumnValEnd - 1 -superscriptCharWidth;
+      const uint16_t leftColValEndSS =
+          leftColumnValEnd - 1 - superscriptCharWidth;
       FTImpl.Cmd_Text(leftColValEndSS, 150, settingsFont, FT_OPT_RIGHTX,
                       labelBuffer);
       FTImpl.Cmd_Text(leftColValEndSS + 1, 150 - 3, 26, 0, "2");
@@ -979,8 +971,7 @@ void runScreen(uint8_t currentTag) {
       //      FTImpl.Cmd_Text(450, 150, 28, FT_OPT_RIGHTX, OutputValue);
       sprintf(labelBuffer, "%" PRId32 " mJ/mm", currentExp.energy);
       FTImpl.Cmd_Text(leftColumnStart, 150, settingsFont, 0, "");
-      FTImpl.Cmd_Text(leftColumnStart, 180, settingsFont, 0,
-                      "Energy density:");
+      FTImpl.Cmd_Text(leftColumnStart, 180, settingsFont, 0, "Energy density:");
       FTImpl.Cmd_Text(leftColValEndSS, 180, settingsFont, FT_OPT_RIGHTX,
                       labelBuffer);
       FTImpl.Cmd_Text(leftColValEndSS + 1, 180 - 3, 26, 0, "2");
@@ -988,7 +979,8 @@ void runScreen(uint8_t currentTag) {
       FTImpl.Cmd_Text(310, 160, 29, 0, "Temp:");
       Temperature = 25.1;
       if (Temperature != -127) {
-        sprintf_P(labelBuffer, PSTR("%d.%01d C"), int(Temperature), int(Temperature * 10) % 10);
+        sprintf_P(labelBuffer, PSTR("%d.%01d C"), int(Temperature),
+                  int(Temperature * 10) % 10);
       } else {
         strcpy_P(labelBuffer, PSTR("Error"));
       }
@@ -1028,9 +1020,34 @@ EscapeNestedLoops:
   setNextScreen(DisplayScreen::kDisplayScreenHome);
 }
 
+// Font is 26;
+static String getWidthLimitedExpName(const char *name, int16_t width,
+                                     uint8_t font) {
+  int16_t nameWidth = stringPixelWidth(name, font);
+  Serial.println("Name width: ");
+  Serial.println(nameWidth);
+  String str(name);
+  if (nameWidth > width) {
+    uint32_t fontTableAddr = getFontTableStartAddr();
+    const char *elipsis = "...";
+    const int16_t elipsisWidth = stringPixelWidth(elipsis, font);
+    int16_t idx = str.length() - 1;
+    for (; idx >= 0; --idx) {
+      nameWidth -= getCharWidth(fontTableAddr, str[idx], font);
+      if (nameWidth + elipsisWidth < width) {
+        break;
+      }
+    }
+    str = str.substring(0, idx) + elipsis;
+  }
+  return str;
+}
+
 // Needs topDisplayedExperiment global to return to correct point in the
 // experiments list from review prev experiment page
 void browseExperimentsScreen(uint8_t ignore) {
+  Serial.println(PSTR("TRACE: browseExperimentesScreen"));
+
   const int experimentsPerScreen = 7;
   SavedExperiment browseExperiments[experimentsPerScreen];
   int16_t browseExperimentsIdx[experimentsPerScreen];
@@ -1092,7 +1109,7 @@ void browseExperimentsScreen(uint8_t ignore) {
     FTImpl.ColorRGB(0, 0, 0);
     FTImpl.TagMask(1);
     for (int i = 0; i < experimentsToDisplay; ++i) {
-      FTImpl.Tag(i + 1);
+      FTImpl.Tag(i + 1);  // minimum tag value is 1
       if (currentPressedTag == i + 1) {
         FTImpl.Cmd_FGColor(0xDDDDDD);
       } else {
@@ -1102,13 +1119,22 @@ void browseExperimentsScreen(uint8_t ignore) {
       const int kRowSpacing = 28;
       FTImpl.Cmd_Button(10, 20 + i * kRowSpacing, FT_DISPLAYWIDTH - 20, 26,
                         kFont, FT_OPT_FLAT, "");
+
+      // date string is 135 width in font 26, leaving 480 - 2*20 -135 - 10 px
+      // seperation for exp name
+      const String displayExpName = getWidthLimitedExpName(
+          browseExperiments[i].name, 480 - 2 * 20 - 135 - 10, kFont);
       FTImpl.Cmd_Text(20, 20 + kRowButtonHeight / 2 + i * kRowSpacing, kFont,
-                      FT_OPT_CENTERY, browseExperiments[i].name);
+                      FT_OPT_CENTERY, displayExpName.c_str());
       String datetime = ConvertTimeDate(browseExperiments[i].datetime);
-      FTImpl.Cmd_Text(300, 20 + kRowButtonHeight / 2 + i * kRowSpacing, kFont,
-                      FT_OPT_CENTERY, datetime.c_str());
+      FTImpl.Cmd_Text(FT_DISPLAYWIDTH - 20,
+                      20 + kRowButtonHeight / 2 + i * kRowSpacing, kFont,
+                      FT_OPT_CENTERY | FT_OPT_RIGHTX, datetime.c_str());
+      // Serial.print("Date width: ");
+      // Serial.println(stringPixelWidth(datetime.c_str(), kFont));
     }
     FTImpl.Cmd_FGColor(kColourPrimary);
+    FTImpl.ColorRGB(0xFF, 0xFF, 0xFF);
 
     if (topDisplayedExperiment - experimentsPerScreen > 0) {
       FTImpl.Tag(kNextPageTag);
@@ -1125,6 +1151,10 @@ void browseExperimentsScreen(uint8_t ignore) {
     FTImpl.DLEnd();
 
     uint8_t buttonPressTag = kpt.waitForChange(currentPressedTag);
+    Serial.print("button pressed: ");
+    Serial.print(buttonPressTag);
+    Serial.print(" currentPressedTag: ");
+    Serial.println(currentPressedTag);
 
     if (kBackButtonTag == buttonPressTag) {
       setNextScreen(DisplayScreen::kDisplayScreenHome);
@@ -1138,9 +1168,17 @@ void browseExperimentsScreen(uint8_t ignore) {
           numSavedExperiments) {
         topDisplayedExperiment += experimentsPerScreen;
       }
-    } else if (0 < buttonPressTag && buttonPressTag < experimentsToDisplay) {
+    } else if (0 < buttonPressTag && buttonPressTag <= experimentsToDisplay) {
+      Serial.println("Setting next screen kDisplayScreenShowSavedExp");
       setNextScreen(DisplayScreen::kDisplayScreenShowSavedExp);
-      currentExp.energy = 12345;
+      const uint8_t selectedExp = buttonPressTag - 1;
+      strcpy(currentExp.name, browseExperiments[selectedExp].name);
+      for (int i = 0; i < 7; ++i) {
+        currentExp.datetime[i] =  browseExperiments[selectedExp].datetime[i];
+      }
+      currentExp.irradience = browseExperiments[selectedExp].irradience;
+      currentExp.time = browseExperiments[selectedExp].time;
+      currentExp.energy = currentExp.irradience * currentExp.time;
       // Set some magic global variable to the Saved Exp state
       // showSavedExpScreenExpIdx = browseExperimentsIdx[buttonPressTag - 1];
       break;
@@ -1149,6 +1187,8 @@ void browseExperimentsScreen(uint8_t ignore) {
 }
 
 void savedExperimentScreen() {
+  Serial.println("TRACE: savedExperimentScreen");
+
   char labelBuffer[30];
   uint8_t currentPressedTag = 0;
   uint8_t buttonPressTag = 0;
@@ -1162,23 +1202,27 @@ void savedExperimentScreen() {
     const int kSpacing = 40;
     const int kLeftColumnX = 30;
     const int kRightColumnX = 200;
-    FTImpl.Cmd_Text(kLeftColumnX, 60, kFont, 0, "Energy:");
+    FTImpl.ColorRGB(0x00, 0x00, 0x00);
+    FTImpl.Cmd_Text(kLeftColumnX, 60, kFont, 0, "Duration:");
     sprintf(labelBuffer, "%" PRId32 ":%02" PRId32, currentExp.time / 60,
             currentExp.time % 60);
     FTImpl.Cmd_Text(kRightColumnX, 60, kFont, 0, labelBuffer);
     FTImpl.Cmd_Text(kLeftColumnX, 60 + kSpacing, kFont, 0, "Irradience:");
     sprintf(labelBuffer, "%ld %%", currentExp.irradience);
     FTImpl.Cmd_Text(kRightColumnX, 60 + kSpacing, kFont, 0, labelBuffer);
-    FTImpl.Cmd_Text(kLeftColumnX, 60 + 2 * kSpacing, kFont, 0, "Energy:");
-    sprintf(labelBuffer, "%ld mW/mm2", currentExp.energy);
+    FTImpl.Cmd_Text(kLeftColumnX, 60 + 2 * kSpacing, kFont, 0, "Energy Density:");
+    sprintf(labelBuffer, "%ld mJ/mm2", currentExp.energy);
+    FTImpl.Cmd_Text(kRightColumnX, 60 + 2 * kSpacing, kFont, 0, labelBuffer);
 
     const uint8_t kBackButtonTag = 10;
     const uint8_t kModifyButtonTag = 11;
     const uint8_t kRunButtonTag = 12;
     FTImpl.TagMask(1);
+    FTImpl.ColorRGB(0xFF, 0xFF, 0xFF);
     drawBottomLeftButton(kBackButtonTag, "Back", currentPressedTag);
     drawBottomMiddleButton(kModifyButtonTag, "Modify", currentPressedTag);
     drawBottomRightButton(kRunButtonTag, "Run", currentPressedTag);
+    FTImpl.DLEnd();
 
     do {
       buttonPressTag = kpt.getButtonPressTag(currentPressedTag);
@@ -1460,21 +1504,14 @@ void loop() {
         FTImpl.Cmd_Text(40, FT_DISPLAYHEIGHT / 3, 28, FT_OPT_CENTERY,
                         "Storage Device not Found");
       }
+
+      FTImpl.DLEnd();
     }
-    FTImpl.Display();
-    FTImpl.Cmd_Swap();
-    FTImpl.Finish();
+
     // End of display
     // plotting/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // Plot requests below here will nt get implemented.
-    if (currentScreen != DisplayScreen::kDisplayScreenHome) {
-      if (tagval == 11)  // Lightox main, run button picked
-      {
-        Screen = 3;  // select notepad before going to run screen
-        Loadimage2ram();
-        Notepad();
-      }
-
+    if (currentScreen == DisplayScreen::kDisplayScreenNone) {
       if (tagval == 12)  // Options
       {
         Screen = 1;
@@ -1483,13 +1520,6 @@ void loop() {
 
       if (tagval == 13)  // quit
       {
-        FTImpl.Cmd_DLStart();
-        FTImpl.ClearColorRGB(64, 64, 64);
-        FTImpl.Clear(1, 1, 1);
-        FTImpl.ColorRGB(0xff, 0xff, 0xff);
-        FTImpl.Display();
-        FTImpl.Cmd_Swap();
-        FTImpl.Finish();
         setNextScreen(DisplayScreen::kDisplayScreenHome);
       }
 
@@ -1534,10 +1564,6 @@ void loop() {
 
       if (tagval == 15)  // Set date and time
       {
-        // FTImpl.DLStart();
-        // FTImpl.ClearColorRGB(64,64,64);
-        // FTImpl.Clear(1,1,1);
-        // FTImpl.Cmd_Swap();
         Screen = 2;
         Loadimage2ram();
       }
@@ -1704,10 +1730,6 @@ void loop() {
 
       if (tagval == 17)  // Product info
       {
-        // FTImpl.DLStart();
-        // FTImpl.ClearColorRGB(64,64,64);
-        // FTImpl.Clear(1,1,1);
-        // FTImpl.Cmd_Swap();
         Screen = 10;
         Loadimage2ram();
       }
@@ -1732,26 +1754,6 @@ void loop() {
           FirstPass = true;
           Notepad();
         }
-      }
-
-      if (tagval == 22)  // Sam
-      {
-        // FTImpl.DLStart();
-        // FTImpl.ClearColorRGB(64,64,64);
-        // FTImpl.Clear(1,1,1);
-        // FTImpl.Cmd_Swap();
-        Screen = 7;
-        Loadimage2ram();
-      }
-
-      if (tagval == 23)  // Carrie
-      {
-        // FTImpl.DLStart();
-        // FTImpl.ClearColorRGB(64,64,64);
-        // FTImpl.Clear(1,1,1);
-        // FTImpl.Cmd_Swap();
-        Screen = 8;
-        Loadimage2ram();
       }
     }
   }
@@ -1899,15 +1901,6 @@ void flash_data(char *pstring, boolean Print) {
   if (Print) Serial.println(pstring);
   mySerial.println(pstring);
   delay(50);
-}
-
-void UpdateTime(uint16_t color) {
-  TimeString[0] = char(48 + int(Time / 600));
-  TimeString[1] = char(48 + int(Time / 60) - 10 * int(Time / 600));
-  TimeString[3] = char(48 + int((Time - 60 * int(Time / 60)) / 10));
-  TimeString[4] = char(48 + Time - 60 * int(Time / 60) -
-                       10 * int((Time - 60 * int(Time / 60)) / 10));
-  // tft.println(TimeString);
 }
 
 void RTC_init() {
