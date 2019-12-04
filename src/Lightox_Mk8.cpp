@@ -359,6 +359,7 @@ enum class DisplayScreen {
   kDisplayScreenShowSavedExp,
   kDisplayScreenExpSettings,
   kDisplayScreenRun,
+  OptionsScreen,
   kDisplayScreenNone,
 };
 bool screenJustSelected = true;
@@ -446,7 +447,7 @@ void homeScreen() {
   DisplayScreen nextScreen = DisplayScreen::kDisplayScreenHome;
   KeyPressTracker kpt(&FTImpl);
   uint8_t selectedTag = 0;
-  while (true) {
+  do {
     // Display the logo
     FTImpl.Cmd_DLStart();
 
@@ -469,6 +470,10 @@ void homeScreen() {
     drawTaggedButton(kPrevExperimentTag,
                      FT_DISPLAY_HSIZE * 3 / 4 - buttonWidth / 2, 200,
                      buttonWidth, 30, "Rerun experiment", selectedTag);
+
+    const uint8_t kOptionsButtonTag = 13;
+    drawTaggedButton(kOptionsButtonTag, FT_DISPLAYWIDTH - 10 - 20, 10, 20, 20,
+                     "O", selectedTag);
     FTImpl.DLEnd();
 
     uint8_t buttonPressTag = kpt.waitForChange(selectedTag);
@@ -478,19 +483,21 @@ void homeScreen() {
     Serial.print(" selectedTag: ");
     Serial.println(selectedTag);
 
-    if (kNewExperimentTag == buttonPressTag) {
+    switch(buttonPressTag) {
+      case kNewExperimentTag:
       setNextScreen(DisplayScreen::kDisplayScreenNewExp);
       strcpy(currentExp.name, ProjectString);
       currentExp.irradience = kDefaultIrradience;
       currentExp.time = kDefaultTime;
       currentExp.energy = kDefaultTime * kDefaultIrradience;
-      Screen = 3;  // TODO remove once new exp screen updated
       break;
-    } else if (kPrevExperimentTag == buttonPressTag) {
+    case kPrevExperimentTag:
       setNextScreen(DisplayScreen::kDisplayScreenBrowseExperiments);
       break;
+      case kOptionsButtonTag:
+      setNextScreen(DisplayScreen::OptionsScreen);
     }
-  };
+  } while (currentScreen == DisplayScreen::kDisplayScreenHome);
 }
 
 void newExpScreen(uint16_t currentScreen) {
@@ -1252,6 +1259,57 @@ void savedExperimentScreen() {
   } while (buttonPressTag == 0);
 }
 
+void optionScreen() {
+  constexpr uint8_t kBackButtonTag = 13;
+  constexpr uint8_t kSetDateButtonTag = 15;
+  constexpr uint8_t kExportLogsButtonTag = 16;
+  constexpr uint8_t kSettingsButtonTag = 17;
+  constexpr uint8_t kAboutButtonTag = 18;
+
+  uint8_t currentTag = 0;
+  KeyPressTracker kpt(&FTImpl);
+  bool done = false;
+  do {
+    FTImpl.Cmd_DLStart();
+    FTImpl.ClearColorRGB(0xFFFFFF);
+    FTImpl.Clear(1, 1, 1);
+    FTImpl.TagMask(1);
+    drawBottomLeftButton(kBackButtonTag, "Back", currentTag);
+    drawTaggedButton(kSetDateButtonTag, 17, 54, 431, 33, "Set date and time",
+                     currentTag);
+    drawTaggedButton(kExportLogsButtonTag, 17, 10, 431, 33,
+                     "Copy logs to flash drive", currentTag);
+    drawTaggedButton(kSettingsButtonTag, 17, 98, 431, 33,
+                     "Settings (Administrator password required)", currentTag);
+    drawTaggedButton(kAboutButtonTag, 17, 142, 431, 33, "About", currentTag);
+    FTImpl.DLEnd();
+
+    const uint8_t buttonPressTag = kpt.waitForChange(currentTag);
+    switch (buttonPressTag) {
+      case kBackButtonTag:
+        setNextScreen(DisplayScreen::kDisplayScreenHome);
+        done = true;
+        break;
+      case kSetDateButtonTag:
+        Screen = 2;
+        done = true;
+        break;
+      case kExportLogsButtonTag:
+        Screen = 9;
+        done = true;
+        break;
+      case kSettingsButtonTag:
+        setNextScreen(DisplayScreen::kDisplayScreenHome);  // TODO Fixme
+        done = true;
+        break;
+      case kAboutButtonTag:
+        Screen = 10;
+        done = true;
+        break;
+    }
+  } while (!done);
+}
+
 void loop() {
   // newscreen
   sTagXY sTagxy;
@@ -1299,6 +1357,10 @@ void loop() {
       tagval = 0;
     } else if (DisplayScreen::kDisplayScreenShowSavedExp == currentScreen) {
       savedExperimentScreen();
+      tagval = 0;
+    }
+    else if (DisplayScreen::OptionsScreen == currentScreen) {
+      optionScreen();
       tagval = 0;
     } else {
       FTImpl.DLStart();
