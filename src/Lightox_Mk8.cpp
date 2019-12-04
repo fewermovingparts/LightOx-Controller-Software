@@ -378,31 +378,36 @@ static uint16_t getButtonOptions(uint8_t buttonTag, uint8_t currentPressedTag) {
   return buttonTag == currentPressedTag ? FT_OPT_FLAT : 0;
 }
 
+static void drawTaggedButton(uint8_t tag, int16_t x, int16_t y, uint16_t w,
+                             uint16_t h, const char *label,
+                             uint8_t currentPressedTag) {
+  FTImpl.Tag(tag);
+  FTImpl.Cmd_Button(x, y, w, h, kFont, getButtonOptions(tag, currentPressedTag),
+                    label);
+}
+
 static void drawBottomLeftButton(uint8_t tag, const char *label,
                                  uint8_t currentPressedTag) {
-  FTImpl.Tag(tag);
-  FTImpl.Cmd_Button(kBorderPixels,
-                    FT_DISPLAYHEIGHT - kBottomButtonHeight - kBorderPixels,
-                    kBottomButtonWidth, kBottomButtonHeight, kFont,
-                    getButtonOptions(tag, currentPressedTag), label);
+  drawTaggedButton(tag, kBorderPixels,
+                   FT_DISPLAYHEIGHT - kBottomButtonHeight - kBorderPixels,
+                   kBottomButtonWidth, kBottomButtonHeight, label,
+                   currentPressedTag);
 }
 
 static void drawBottomMiddleButton(uint8_t tag, const char *label,
                                    uint8_t currentPressedTag) {
-  FTImpl.Tag(tag);
-  FTImpl.Cmd_Button((FT_DISPLAYWIDTH - kBottomButtonWidth) / 2,
-                    FT_DISPLAYHEIGHT - kBottomButtonHeight - kBorderPixels,
-                    kBottomButtonWidth, kBottomButtonHeight, kFont,
-                    getButtonOptions(tag, currentPressedTag), label);
+  drawTaggedButton(tag, (FT_DISPLAYWIDTH - kBottomButtonWidth) / 2,
+                   FT_DISPLAYHEIGHT - kBottomButtonHeight - kBorderPixels,
+                   kBottomButtonWidth, kBottomButtonHeight, label,
+                   currentPressedTag);
 }
 
 static void drawBottomRightButton(uint8_t tag, const char *label,
                                   uint8_t currentPressedTag) {
-  FTImpl.Tag(tag);
-  FTImpl.Cmd_Button(FT_DISPLAYWIDTH - kBottomButtonWidth - kBorderPixels,
-                    FT_DISPLAYHEIGHT - kBottomButtonHeight - kBorderPixels,
-                    kBottomButtonWidth, kBottomButtonHeight, kFont,
-                    getButtonOptions(tag, currentPressedTag), label);
+  drawTaggedButton(tag, FT_DISPLAYWIDTH - kBottomButtonWidth - kBorderPixels,
+                   FT_DISPLAYHEIGHT - kBottomButtonHeight - kBorderPixels,
+                   kBottomButtonWidth, kBottomButtonHeight, label,
+                   currentPressedTag);
 }
 
 void showExpHeader(const char *expName, int TimeDate[7]) {
@@ -457,16 +462,13 @@ void homeScreen() {
 
     const int16_t buttonWidth = 120;
     const uint8_t kNewExperimentTag = 11;
-    FTImpl.Tag(kNewExperimentTag);
-    uint16_t options = kNewExperimentTag == selectedTag ? FT_OPT_FLAT : 0;
-    FTImpl.Cmd_Button(FT_DISPLAY_HSIZE / 4 - buttonWidth / 2, 200, buttonWidth,
-                      30, kFont, options, "New experiment");
+    drawTaggedButton(kNewExperimentTag, FT_DISPLAY_HSIZE / 4 - buttonWidth / 2,
+                     200, buttonWidth, 30, "New experiment", selectedTag);
 
     const uint8_t kPrevExperimentTag = 12;
-    FTImpl.Tag(kPrevExperimentTag);
-    options = kPrevExperimentTag == selectedTag ? FT_OPT_FLAT : 0;
-    FTImpl.Cmd_Button(FT_DISPLAY_HSIZE * 3 / 4 - buttonWidth / 2, 200,
-                      buttonWidth, 30, kFont, options, "Rerun experiment");
+    drawTaggedButton(kPrevExperimentTag,
+                     FT_DISPLAY_HSIZE * 3 / 4 - buttonWidth / 2, 200,
+                     buttonWidth, 30, "Rerun experiment", selectedTag);
     FTImpl.DLEnd();
 
     uint8_t buttonPressTag = kpt.waitForChange(selectedTag);
