@@ -18,6 +18,8 @@
 
 #include "database.h"
 
+#define VERSION "1.0"
+
 enum NotepadResult { kNotepadResultQuit, kNotepadResultSave };
 // Buffer for the notepads
 #define MAX_FT_LINES 2  // Max FT_LINES allows to Display
@@ -360,6 +362,7 @@ enum class DisplayScreen {
   kDisplayScreenExpSettings,
   kDisplayScreenRun,
   OptionsScreen,
+  AboutScreen,
   kDisplayScreenNone,
 };
 bool screenJustSelected = true;
@@ -483,19 +486,19 @@ void homeScreen() {
     Serial.print(" selectedTag: ");
     Serial.println(selectedTag);
 
-    switch(buttonPressTag) {
+    switch (buttonPressTag) {
       case kNewExperimentTag:
-      setNextScreen(DisplayScreen::kDisplayScreenNewExp);
-      strcpy(currentExp.name, ProjectString);
-      currentExp.irradience = kDefaultIrradience;
-      currentExp.time = kDefaultTime;
-      currentExp.energy = kDefaultTime * kDefaultIrradience;
-      break;
-    case kPrevExperimentTag:
-      setNextScreen(DisplayScreen::kDisplayScreenBrowseExperiments);
-      break;
+        setNextScreen(DisplayScreen::kDisplayScreenNewExp);
+        strcpy(currentExp.name, ProjectString);
+        currentExp.irradience = kDefaultIrradience;
+        currentExp.time = kDefaultTime;
+        currentExp.energy = kDefaultTime * kDefaultIrradience;
+        break;
+      case kPrevExperimentTag:
+        setNextScreen(DisplayScreen::kDisplayScreenBrowseExperiments);
+        break;
       case kOptionsButtonTag:
-      setNextScreen(DisplayScreen::OptionsScreen);
+        setNextScreen(DisplayScreen::OptionsScreen);
     }
   } while (currentScreen == DisplayScreen::kDisplayScreenHome);
 }
@@ -1303,11 +1306,39 @@ void optionScreen() {
         done = true;
         break;
       case kAboutButtonTag:
-        Screen = 10;
+        setNextScreen(DisplayScreen::AboutScreen);
         done = true;
         break;
     }
   } while (!done);
+}
+
+static void aboutScreen() {
+  uint8_t currentTag = 0;
+  KeyPressTracker kpt(&FTImpl);
+  while (true) {
+    FTImpl.Cmd_DLStart();
+    FTImpl.ClearColorRGB(0xFFFFFF);
+    FTImpl.Clear(1, 1, 1);
+
+    FTImpl.ColorRGB(0);
+    FTImpl.Cmd_Text(230, 20, 28, FT_OPT_CENTER, "PRODUCT INFORMATION PAGE");
+    FTImpl.Cmd_Text(230, 150, 26, FT_OPT_CENTER, "Software version " VERSION);
+    FTImpl.Cmd_Text(230, 200, 26, FT_OPT_CENTER, "(C) 2019 Lightox");
+
+    FTImpl.TagMask(1);
+    constexpr uint8_t kBackButtonTag = 1;
+    FTImpl.ColorRGB(0xFFFFFF);
+    drawBottomLeftButton(kBackButtonTag, "Back", currentTag);
+
+    FTImpl.DLEnd();
+
+    const uint8_t buttonPressTag = kpt.waitForChange(currentTag);
+    if (kBackButtonTag == buttonPressTag) {
+      setNextScreen(DisplayScreen::OptionsScreen);
+      break;
+    }
+  };
 }
 
 void loop() {
@@ -1358,10 +1389,11 @@ void loop() {
     } else if (DisplayScreen::kDisplayScreenShowSavedExp == currentScreen) {
       savedExperimentScreen();
       tagval = 0;
-    }
-    else if (DisplayScreen::OptionsScreen == currentScreen) {
+    } else if (DisplayScreen::OptionsScreen == currentScreen) {
       optionScreen();
       tagval = 0;
+    } else if (DisplayScreen::AboutScreen == currentScreen) {
+      aboutScreen();
     } else {
       FTImpl.DLStart();
       if (Screen !=
@@ -1374,37 +1406,6 @@ void loop() {
         if (13 == tagval) tagoption = FT_OPT_FLAT;
         FTImpl.Tag(13);
         FTImpl.Cmd_Button(63 - 47, 241 - 19, 94, 38, 26, tagoption, "Quit");
-      }
-
-      if (Screen ==
-          1)  // Options///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-      {
-        tagoption =
-            0;  // no touch is default 3d effect and touch is flat effect
-        if (15 == tagval) tagoption = FT_OPT_FLAT;
-        FTImpl.Tag(15);
-        FTImpl.Cmd_Button(17, 54, 431, 33, 26, tagoption, "Set date and time");
-
-        tagoption =
-            0;  // no touch is default 3d effect and touch is flat effect
-        if (16 == tagval) tagoption = FT_OPT_FLAT;
-        FTImpl.Tag(16);
-        FTImpl.Cmd_Button(17, 10, 431, 33, 26, tagoption,
-                          "Copy logs to flash drive");
-
-        tagoption =
-            0;  // no touch is default 3d effect and touch is flat effect
-        if (18 == tagval) tagoption = FT_OPT_FLAT;
-        FTImpl.Tag(18);
-        FTImpl.Cmd_Button(17, 98, 431, 33, 26, tagoption,
-                          "Settings (Administrator password required)");
-
-        tagoption =
-            0;  // no touch is default 3d effect and touch is flat effect
-        if (17 == tagval) tagoption = FT_OPT_FLAT;
-        FTImpl.Tag(17);
-        FTImpl.Cmd_Button(17, 142, 431, 33, 26, tagoption,
-                          "Product information");
       }
 
       if (Screen ==
@@ -1558,19 +1559,6 @@ void loop() {
         // FTImpl.DLEnd();
         // FTImpl.Finish();
         delay(10);
-      }
-
-      if (Screen == 10)  // Info
-      {
-        FTImpl.Cmd_Text(230, 20, 28, FT_OPT_CENTER, "PRODUCT INFORMATION PAGE");
-        FTImpl.Cmd_Text(230, 60, 26, FT_OPT_CENTER,
-                        "405nm Luminus SST-10-UV LEDs");
-        FTImpl.Cmd_Text(230, 90, 26, FT_OPT_CENTER, "ST LED6001 controller");
-        FTImpl.Cmd_Text(230, 120, 26, FT_OPT_CENTER,
-                        "Drive current: 100% = 0.5A, 0% = OFF");
-        FTImpl.Cmd_Text(230, 150, 26, FT_OPT_CENTER, "Software version 8.0");
-        FTImpl.Cmd_Text(230, 200, 26, FT_OPT_CENTER,
-                        "Designed & built by BNC for Lightox");
       }
 
       if (sd_present) {
