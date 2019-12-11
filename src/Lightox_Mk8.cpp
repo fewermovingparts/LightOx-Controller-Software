@@ -20,6 +20,8 @@
 
 #define VERSION "1.0"
 
+constexpr bool kRotateScreen = true;
+
 enum NotepadResult { kNotepadResultQuit, kNotepadResultSave };
 // Buffer for the notepads
 #define MAX_FT_LINES 2  // Max FT_LINES allows to Display
@@ -136,7 +138,7 @@ int32_t EnergyDensity, NewEnergyDensity,
     NED;  // value stored in EEPROM from callibration in mW/mm^2
 int eeAddress = 0;
 const int kCalibrationAddress = 10;
-const byte kCalibrationMagicByte = 0xAA;
+constexpr byte kCalibrationMagicByte = kRotateScreen ? 0x55 : 0xAA;
 const int kCalibrationNumBytes = 24;
 bool needsCalibration = true;
 bool FirstPass = false, LidOpen = false;
@@ -1927,7 +1929,9 @@ int16_t BootupConfigure() {
 
   /*Platform pressure sensitivity adjustment*/
   //  FTImpl.Write16(REG_TOUCH_RZTHRESH,1200);
-
+  if (kRotateScreen) {
+    FTImpl.Write(REG_ROTATE, 0x1u);
+  }
   /* Set the Display & audio pins */
   FTImpl.SetDisplayEnablePin(FT_DISPENABLE_PIN);
   FTImpl.SetAudioEnablePin(FT_AUDIOENABLE_PIN);
