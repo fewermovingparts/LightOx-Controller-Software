@@ -1327,11 +1327,10 @@ static void aboutScreen() {
   KeyPressTracker kpt(&FTImpl);
   while (true) {
     displayStartWhite();
-
+    showExpHeader("Product information", nullptr);
     FTImpl.ColorRGB(0);
-    FTImpl.Cmd_Text(230, 20, 28, FT_OPT_CENTER, "PRODUCT INFORMATION PAGE");
     FTImpl.Cmd_Text(230, 150, 26, FT_OPT_CENTER, "Software version " VERSION);
-    FTImpl.Cmd_Text(230, 200, 26, FT_OPT_CENTER, "(C) 2019 Lightox");
+    FTImpl.Cmd_Text(230, 200, 26, FT_OPT_CENTER, "(C) 2019 LightOx");
 
     FTImpl.TagMask(1);
     constexpr uint8_t kBackButtonTag = 1;
