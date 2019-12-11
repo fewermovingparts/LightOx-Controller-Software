@@ -365,6 +365,7 @@ enum class DisplayScreen {
   kDisplayScreenRun,
   OptionsScreen,
   AboutScreen,
+  SetDateTimeScreen,
   kDisplayScreenNone,
 };
 bool screenJustSelected = true;
@@ -1296,7 +1297,7 @@ void optionScreen() {
         done = true;
         break;
       case kSetDateButtonTag:
-        Screen = 2;
+        setNextScreen(DisplayScreen::SetDateTimeScreen);
         done = true;
         break;
       case kExportLogsButtonTag:
@@ -1315,13 +1316,17 @@ void optionScreen() {
   } while (!done);
 }
 
+static void displayStartWhite() {
+  FTImpl.Cmd_DLStart();
+  FTImpl.ClearColorRGB(0xFFFFFF);
+  FTImpl.Clear(1, 1, 1);
+}
+
 static void aboutScreen() {
   uint8_t currentTag = 0;
   KeyPressTracker kpt(&FTImpl);
   while (true) {
-    FTImpl.Cmd_DLStart();
-    FTImpl.ClearColorRGB(0xFFFFFF);
-    FTImpl.Clear(1, 1, 1);
+    displayStartWhite();
 
     FTImpl.ColorRGB(0);
     FTImpl.Cmd_Text(230, 20, 28, FT_OPT_CENTER, "PRODUCT INFORMATION PAGE");
@@ -1343,16 +1348,134 @@ static void aboutScreen() {
   };
 }
 
+void setDateScreen() {
+  ReadTimeDate(TimeAndDate);
+
+  constexpr uint8_t kBackButtonTag = 13;
+  constexpr uint8_t kSaveButtonTag = 14;
+  constexpr uint8_t kDayTag = 25;
+  constexpr uint8_t kMonthTag = 26;
+  constexpr uint8_t kYearTag = 27;
+  constexpr uint8_t kHourTag = 28;
+  constexpr uint8_t kMinuteTag = 29;
+  constexpr uint8_t kSecondTag = 30;
+  constexpr uint8_t kUpTag = 31;
+  constexpr uint8_t kDownTag = 32;
+
+  constexpr int16_t kTimeBtnWidth = 60;
+  constexpr int16_t kTimeBtnSpacing = 10;
+  constexpr int16_t kTimeBtnHeight = 38;
+  constexpr int16_t kTimeBtnY = 100;
+
+  uint8_t currentPressedTag = 0;
+  uint8_t selectedDateTimeTag = kDayTag;
+  KeyPressTracker kpt(&FTImpl);
+  while (true) {
+    displayStartWhite();
+    FTImpl.TagMask(1);
+    drawBottomLeftButton(kBackButtonTag, "Back", currentPressedTag);
+    drawBottomRightButton(kSaveButtonTag, "Save", currentPressedTag);
+
+    char TmpDate[3];
+
+    TmpDate[0] = char(48 + int(TimeAndDate[4] / 10));
+    TmpDate[1] = char(48 + TimeAndDate[4] - 10 * int(TimeAndDate[4] / 10));
+    TmpDate[2] = '\0';
+    FTImpl.Tag(kDayTag);
+    FTImpl.Cmd_Button(FT_DISPLAYWIDTH / 2 - 3 * kTimeBtnWidth - 5 * kTimeBtnSpacing / 2,
+                     kTimeBtnY, kTimeBtnWidth, kTimeBtnHeight, 30, getButtonOptions(kDayTag, selectedDateTimeTag),
+                      TmpDate);  // Day
+    FTImpl.Tag(kMonthTag);
+    TmpDate[0] = char(48 + int(TimeAndDate[5] / 10));
+    TmpDate[1] = char(48 + TimeAndDate[5] - 10 * int(TimeAndDate[5] / 10));
+    FTImpl.Cmd_Button(FT_DISPLAYWIDTH / 2 - 2 * kTimeBtnWidth - 3 * kTimeBtnSpacing / 2, kTimeBtnY, kTimeBtnWidth, kTimeBtnHeight, 30,
+                      getButtonOptions(kMonthTag, selectedDateTimeTag),
+                      TmpDate);  // Month
+    FTImpl.Tag(kYearTag);
+    TmpDate[0] = char(48 + int(TimeAndDate[6] / 10));
+    TmpDate[1] = char(48 + TimeAndDate[6] - 10 * int(TimeAndDate[6] / 10));
+    FTImpl.Cmd_Button(FT_DISPLAYWIDTH / 2 - kTimeBtnWidth - kTimeBtnSpacing / 2, kTimeBtnY, kTimeBtnWidth, kTimeBtnHeight, 30,
+                      getButtonOptions(kYearTag, selectedDateTimeTag),
+                      TmpDate);  // Year
+    FTImpl.Tag(kHourTag);
+    TmpDate[0] = char(48 + int(TimeAndDate[2] / 10));
+    TmpDate[1] = char(48 + TimeAndDate[2] - 10 * int(TimeAndDate[2] / 10));
+    FTImpl.Cmd_Button(FT_DISPLAYWIDTH / 2 + kTimeBtnSpacing / 2, kTimeBtnY, kTimeBtnWidth, kTimeBtnHeight, 30,
+                      getButtonOptions(kHourTag, selectedDateTimeTag),
+                      TmpDate);  // Hour
+    FTImpl.Tag(kMinuteTag);
+    TmpDate[0] = char(48 + int(TimeAndDate[1] / 10));
+    TmpDate[1] = char(48 + TimeAndDate[1] - 10 * int(TimeAndDate[1] / 10));
+    FTImpl.Cmd_Button(FT_DISPLAYWIDTH / 2 + kTimeBtnWidth + 3 * kTimeBtnSpacing / 2, kTimeBtnY, kTimeBtnWidth, kTimeBtnHeight, 30,
+                      getButtonOptions(kMinuteTag, selectedDateTimeTag),
+                      TmpDate);  // Minute
+    FTImpl.Tag(kSecondTag);
+    TmpDate[0] = char(48 + int(TimeAndDate[0] / 10));
+    TmpDate[1] = char(48 + TimeAndDate[0] - 10 * int(TimeAndDate[0] / 10));
+    FTImpl.Cmd_Button(FT_DISPLAYWIDTH / 2 + 2 * kTimeBtnWidth + 5 * kTimeBtnSpacing / 2, kTimeBtnY, kTimeBtnWidth, kTimeBtnHeight, 30,
+                      getButtonOptions(kSecondTag, selectedDateTimeTag),
+                      TmpDate);  // Second
+    // Up/down buttons
+    FTImpl.Tag(kUpTag);
+    FTImpl.Cmd_Button(FT_DISPLAYWIDTH / 2 - kTimeBtnWidth - kTimeBtnSpacing / 2,
+                      kTimeBtnY + kTimeBtnHeight + 2*kTimeBtnSpacing, kTimeBtnWidth, kTimeBtnHeight, 31, getButtonOptions(kUpTag, currentPressedTag), "^");
+
+    FTImpl.Tag(kDownTag);
+    FTImpl.Cmd_Button(FT_DISPLAYWIDTH / 2 + kTimeBtnSpacing / 2,
+                      kTimeBtnY + kTimeBtnHeight + 2*kTimeBtnSpacing, kTimeBtnWidth, kTimeBtnHeight, 30, getButtonOptions(kDownTag, currentPressedTag), "v");
+    FTImpl.TagMask(0);
+    FTImpl.ColorRGB(0x0,0x0,0x0);
+
+    constexpr char const * const labels[] = {"Day", "Month", "Year", "Hour",  "Minute", "Second"};
+    int16_t xpos = FT_DISPLAYWIDTH / 2 - 3 * kTimeBtnWidth + kTimeBtnWidth / 2 - 5 * kTimeBtnSpacing / 2;
+    for (const auto& label: labels) {
+      FTImpl.Cmd_Text(xpos, kTimeBtnY - 15, kFont, FT_OPT_CENTER, label);
+      xpos += kTimeBtnSpacing + kTimeBtnWidth;
+    }
+
+    showExpHeader("Set Date and Time", nullptr);
+
+    FTImpl.DLEnd();
+
+    const uint8_t buttonPressTag = kpt.getButtonPressTag(currentPressedTag);
+
+    if (currentPressedTag == kUpTag) {
+      TimeDigit = selectedDateTimeTag - 25;
+      TimeAndDate[TimePointer[TimeDigit]] += 1;
+      if (TimeAndDate[TimePointer[TimeDigit]] > TimeMax[TimeDigit])
+        TimeAndDate[TimePointer[TimeDigit]] = TimeMin[TimeDigit];
+      delay(200);
+    } else if(currentPressedTag == kDownTag) {
+      TimeDigit = selectedDateTimeTag - 25;
+      TimeAndDate[TimePointer[TimeDigit]] -= 1;
+      if (TimeAndDate[TimePointer[TimeDigit]] < TimeMin[TimeDigit])
+        TimeAndDate[TimePointer[TimeDigit]] = TimeMax[TimeDigit];
+      delay(200);
+    } else if (kSaveButtonTag == buttonPressTag) {
+      Serial.println("Save date");
+      SetTimeDate(TimeAndDate[TimePointer[0]], TimeAndDate[TimePointer[1]],
+                  TimeAndDate[TimePointer[2]], TimeAndDate[TimePointer[3]],
+                  TimeAndDate[TimePointer[4]], TimeAndDate[TimePointer[5]]);
+      setNextScreen(DisplayScreen::kDisplayScreenHome);
+      break;
+    } else if (kBackButtonTag == buttonPressTag) {
+      setNextScreen(DisplayScreen::OptionsScreen);
+      break;
+    } else if ((kDayTag <= buttonPressTag) && (buttonPressTag <= kSecondTag)) {
+      selectedDateTimeTag = buttonPressTag;
+    }
+  }
+}
+
 void loop() {
   // newscreen
   sTagXY sTagxy;
-  int32_t tagval, tagoption = 0, datetag = 25;
+  int32_t tagval, tagoption = 0;
   // for sliders
   uint32_t TrackRegisterVal = 0;
   int32_t tmpNewEnergyDensity,
       tmpNewCurrent = 100;  //, tmpintensity = 100
   char strNewEnergyDensity[15];
-  char TmpDate[3];
   // end sliders
 
   File LogFile2;
@@ -1361,7 +1484,6 @@ void loop() {
   int logpointer = 0, logcopycount = 0;
   char FlashFile[27] = {'$', 'W', 'R', 'I', 'T', 'E', ' ', 'L', 'O', 'G',
                         '0', '0', '0', '0', '0', '.', 'C', 'S', 'V'};
-  bool DateRead = false;
 
   Screen = 0;  // 5;
   setNextScreen(DisplayScreen::kDisplayScreenHome);
@@ -1396,6 +1518,8 @@ void loop() {
       tagval = 0;
     } else if (DisplayScreen::AboutScreen == currentScreen) {
       aboutScreen();
+    } else if (DisplayScreen::SetDateTimeScreen == currentScreen) {
+      setDateScreen();
     } else {
       FTImpl.DLStart();
       if (Screen !=
@@ -1410,90 +1534,7 @@ void loop() {
         FTImpl.Cmd_Button(63 - 47, 241 - 19, 94, 38, 26, tagoption, "Quit");
       }
 
-      if (Screen ==
-          2)  // Date///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-      {
-        tagoption =
-            0;  // no touch is default 3d effect and touch is flat effect
-        if (14 == tagval) tagoption = FT_OPT_FLAT;
-        FTImpl.Tag(14);
-        FTImpl.Cmd_Button(423 - 47, 241 - 19, 94, 38, 26, tagoption, "Save");
-        if (!DateRead) {
-          ReadTimeDate(TimeAndDate);
-          DateRead = true;
-        }
-        if ((25 <= tagval) && (tagval <= 30)) {
-          datetag = tagval;  // tagoption = FT_OPT_FLAT;
-        }
-        FTImpl.Tag(25);
-        TmpDate[0] = char(48 + int(TimeAndDate[4] / 10));
-        TmpDate[1] = char(48 + TimeAndDate[4] - 10 * int(TimeAndDate[4] / 10));
-        TmpDate[2] = '\0';
-        FTImpl.Cmd_Button(40, 40, 60, 38, 30, (datetag == 25) ? FT_OPT_FLAT : 0,
-                          TmpDate);  // Day
-        FTImpl.Tag(26);
-        TmpDate[0] = char(48 + int(TimeAndDate[5] / 10));
-        TmpDate[1] = char(48 + TimeAndDate[5] - 10 * int(TimeAndDate[5] / 10));
-        FTImpl.Cmd_Button(110, 40, 60, 38, 30,
-                          (datetag == 26) ? FT_OPT_FLAT : 0,
-                          TmpDate);  // Month
-        FTImpl.Tag(27);
-        TmpDate[0] = char(48 + int(TimeAndDate[6] / 10));
-        TmpDate[1] = char(48 + TimeAndDate[6] - 10 * int(TimeAndDate[6] / 10));
-        FTImpl.Cmd_Button(180, 40, 60, 38, 30,
-                          (datetag == 27) ? FT_OPT_FLAT : 0,
-                          TmpDate);  // Year
-        FTImpl.Tag(28);
-        TmpDate[0] = char(48 + int(TimeAndDate[2] / 10));
-        TmpDate[1] = char(48 + TimeAndDate[2] - 10 * int(TimeAndDate[2] / 10));
-        FTImpl.Cmd_Button(250, 40, 60, 38, 30,
-                          (datetag == 28) ? FT_OPT_FLAT : 0,
-                          TmpDate);  // Hour
-        FTImpl.Tag(29);
-        TmpDate[0] = char(48 + int(TimeAndDate[1] / 10));
-        TmpDate[1] = char(48 + TimeAndDate[1] - 10 * int(TimeAndDate[1] / 10));
-        FTImpl.Cmd_Button(320, 40, 60, 38, 30,
-                          (datetag == 29) ? FT_OPT_FLAT : 0,
-                          TmpDate);  // Minute
-        FTImpl.Tag(30);
-        TmpDate[0] = char(48 + int(TimeAndDate[0] / 10));
-        TmpDate[1] = char(48 + TimeAndDate[0] - 10 * int(TimeAndDate[0] / 10));
-        FTImpl.Cmd_Button(390, 40, 60, 38, 30,
-                          (datetag == 30) ? FT_OPT_FLAT : 0,
-                          TmpDate);  // Second
-        // Up/down buttons
-        tagoption =
-            0;  // no touch is default 3d effect and touch is flat effect
-        if (31 == tagval) tagoption = FT_OPT_FLAT;
-        FTImpl.Tag(31);
-        FTImpl.Cmd_Button(185, 120, 60, 38, 31, tagoption, "^");
-        tagoption =
-            0;  // no touch is default 3d effect and touch is flat effect
-        if (32 == tagval) tagoption = FT_OPT_FLAT;
-        FTImpl.Tag(32);
-        FTImpl.Cmd_Button(255, 120, 60, 38, 30, tagoption, "v");
-        // FTImpl.TagMask(0);
-        // FTImpl.ColorRGB(0xff,0xff,0xff);
-        // FTImpl.Cmd_Text(60, 20, 26, FT_OPT_CENTER, "Duration");
-        FTImpl.Cmd_Text(250, 25, 16, FT_OPT_CENTER,
-                        "Day    Month     Year     Hour   Minute  Second");
-
-        if (tagval == 31) {
-          TimeDigit = datetag - 25;
-          TimeAndDate[TimePointer[TimeDigit]] += 1;
-          if (TimeAndDate[TimePointer[TimeDigit]] > TimeMax[TimeDigit])
-            TimeAndDate[TimePointer[TimeDigit]] = TimeMin[TimeDigit];
-          delay(200);
-        }
-
-        if (tagval == 32) {
-          TimeDigit = datetag - 25;
-          TimeAndDate[TimePointer[TimeDigit]] -= 1;
-          if (TimeAndDate[TimePointer[TimeDigit]] < TimeMin[TimeDigit])
-            TimeAndDate[TimePointer[TimeDigit]] = TimeMax[TimeDigit];
-          delay(200);
-        }
-      }
+ 
 
       if (Screen ==
           5)  // Current & power
@@ -1612,14 +1653,6 @@ void loop() {
         {
           Serial.println("Run");
           Screen = 6;
-        } else if (Screen == 2)  //=Date
-        {
-          Serial.println("Save date");
-          SetTimeDate(TimeAndDate[TimePointer[0]], TimeAndDate[TimePointer[1]],
-                      TimeAndDate[TimePointer[2]], TimeAndDate[TimePointer[3]],
-                      TimeAndDate[TimePointer[4]], TimeAndDate[TimePointer[5]]);
-          DateRead = false;
-          setNextScreen(DisplayScreen::kDisplayScreenHome);
         }
       }
 
