@@ -244,7 +244,7 @@ static bool getCalibrationRequired() {
 
 static void calibrateAndStore() {
   Calibrate();
-  Serial.println("Storing calibration:");
+  Serial.println(F("Storing calibration:"));
   for (int i = 0; i < kCalibrationNumBytes; ++i) {
     const uint8_t val = FTImpl.Read(REG_CTOUCH_TRANSFORM_A + i);
     EEPROM.write(kCalibrationAddress + 1 + i, val);
@@ -277,13 +277,13 @@ void setup(void) {
   digitalWrite(FAN, LOW);
 
   Serial.begin(9600);
-  Serial.println("Setup....");
+  Serial.println(F("Setup...."));
 
   sensors.begin();  // start up the Dallas sensors library
   // Dallas Address = 40,121,248,228,7,0,0,181 for Box 2.
   sensors.getAddress(DallasAddress, 0);  // get address of device 0
   // reading temperatures here works if before RTC_init, but fails if after
-  Serial.print("Dallas Address = ");
+  Serial.print(F("Dallas Address = "));
   for (int8_t i = 0; i < 8; i++) {
     Serial.print(DallasAddress[i]);
     if (i < 7) Serial.print(",");
@@ -296,7 +296,7 @@ void setup(void) {
   BootupConfigure();
   CheckStorageDevicePresence();
 
-  Serial.print("CS pins (4,10,26) = ");
+  Serial.print(F("CS pins (4,10,26) = "));
   Serial.print(digitalRead(FT_SD_CSPIN));
   Serial.print(digitalRead(FT_CS_PIN));
   Serial.println(digitalRead(RTC_CS));
@@ -307,19 +307,19 @@ void setup(void) {
 
   yield();  // from bmp program - what does it do?
 
-  Serial.print("Initializing SD card...");  //<---is there a clash with FT_SD?
+  Serial.print(F("Initializing SD card..."));  //<---is there a clash with FT_SD?
   if (!sd.begin(FT_SD_CSPIN)) {             // Was SD_CS
-    Serial.println("failed!");
+    Serial.println(F("failed!"));
   }
-  Serial.println("OK!");
+  Serial.println(F("OK!"));
 
-  Serial.print("Initialising flash drive USB host ");
+  Serial.print(F("Initialising flash drive USB host "));
   flashDrive.init();
   Serial.println(flashDrive.pingDevice() ? "OK" : "failed");
 
   EEPROM.get(eeAddress, EnergyDensity);
   // EnergyDensity = 188;
-  Serial.print("Stored Energy Density = ");
+  Serial.print(F("Stored Energy Density = "));
   Serial.println(EnergyDensity);
   // Energy =
   //    (float)Time * (float)EnergyDensity / 1000.0 * (float)Intensity / 100.0;
@@ -331,13 +331,13 @@ void setup(void) {
   analogWrite(PWM, 0);
   delay(1000);
 
-  Serial.print("CS pins (4,10,26) = ");
+  Serial.print(F("CS pins (4,10,26) = "));
   Serial.print(digitalRead(FT_SD_CSPIN));
   Serial.print(digitalRead(FT_CS_PIN));
   Serial.println(digitalRead(RTC_CS));
-  Serial.println("Reading date & time...");
+  Serial.println(F("Reading date & time..."));
   ReadTimeDate(TimeAndDate);
-  Serial.println("D&T read...");
+  Serial.println(F("D&T read..."));
   Serial.println(ConvertTimeDate(TimeAndDate));
 
   if (getCalibrationRequired()) {
@@ -349,7 +349,7 @@ void setup(void) {
   Screen = 0;
   Loadimage2ram();
 
-  Serial.println("Setup complete.....");
+  Serial.println(F("Setup complete....."));
 }
 
 const uint32_t kColourPrimary = 0x2A5673 + 0x001000;  // dark greeny
@@ -448,7 +448,7 @@ void showExpHeader(const char *expName, int TimeDate[7]) {
 }
 
 void homeScreen() {
-  Serial.println("TRACE: homeScreen()");
+  Serial.println(F("TRACE: homeScreen()"));
 
   // Reset some global state
   browseExperimentsStartExpIdx = -1;
@@ -486,11 +486,6 @@ void homeScreen() {
     FTImpl.DLEnd();
 
     uint8_t buttonPressTag = kpt.waitForChange(selectedTag);
-
-    Serial.print("Home screen button pressed: ");
-    Serial.print(buttonPressTag);
-    Serial.print(" selectedTag: ");
-    Serial.println(selectedTag);
 
     switch (buttonPressTag) {
       case kNewExperimentTag:
@@ -552,7 +547,7 @@ void saveCurrentExp() {
 void experimentSettingsScreen() {
   uint8_t currentTag = 0;
   KeyPressTracker kpt(&FTImpl);
-  Serial.println("TRACE: experimentSettingsScreen()");
+  Serial.println(F("TRACE: experimentSettingsScreen()"));
 
   int32_t &time = currentExp.time;
   int32_t &irradience = currentExp.irradience;
@@ -911,7 +906,7 @@ void runScreen(uint8_t currentTag) {
     if (OldiTime != iTime)  // into a new second, so save results
     {
       OldiTime = iTime;
-      Serial.print("Time = ");
+      Serial.print(F("Time = "));
       Serial.print(currentExp.time - iTime);
       LogFile2.print(iTime);
       Serial.print(", uv = ");
@@ -941,7 +936,7 @@ void runScreen(uint8_t currentTag) {
       if (Temperature != -127) {
         Serial.println(Temperature);
       } else {
-        Serial.println("Read Error");
+        Serial.println(F("Read Error"));
       }
       LogFile2.println(Temperature);
       // You can have more than one IC on the same bus.
@@ -1021,8 +1016,8 @@ void runScreen(uint8_t currentTag) {
 
     const uint8_t buttonPressTag = kpt.getButtonPressTag(currentPressedTag);
     if (kAbortButtonTag == buttonPressTag) {
-      Serial.println("Abort hit");
-      LogFile2.println("Abort hit");
+      Serial.println(F("Abort hit"));
+      LogFile2.println(F("Abort hit"));
       LidOpen = false;
       goto EscapeNestedLoops;
     }
@@ -1034,8 +1029,8 @@ EscapeNestedLoops:
   Serial.println(iTime);
   digitalWrite(FAN, LOW);
   analogWrite(ADM, 0);
-  Serial.print("End Date/Time: ");
-  LogFile2.print("End Date/Time: ");
+  Serial.print(F("End Date/Time: "));
+  LogFile2.print(F("End Date/Time: "));
   ReadTimeDate(TimeAndDate);
   LogFile2.println(ConvertTimeDate(TimeAndDate));
   Serial.println(ConvertTimeDate(TimeAndDate));
@@ -1047,8 +1042,10 @@ EscapeNestedLoops:
 static String getWidthLimitedExpName(const char *name, int16_t width,
                                      uint8_t font) {
   int16_t nameWidth = stringPixelWidth(name, font);
+#ifdef DEBUG
   Serial.println("Name width: ");
   Serial.println(nameWidth);
+#endif
   String str(name);
   if (nameWidth > width) {
     uint32_t fontTableAddr = getFontTableStartAddr();
@@ -1069,7 +1066,7 @@ static String getWidthLimitedExpName(const char *name, int16_t width,
 // Needs topDisplayedExperiment global to return to correct point in the
 // experiments list from review prev experiment page
 void browseExperimentsScreen(uint8_t ignore) {
-  Serial.println(PSTR("TRACE: browseExperimentesScreen"));
+  Serial.println(F("TRACE: browseExperiments Screen"));
 
   const int experimentsPerScreen = 7;
   SavedExperiment browseExperiments[experimentsPerScreen];
@@ -1110,7 +1107,7 @@ void browseExperimentsScreen(uint8_t ignore) {
   while (true) {
     if (topDisplayedExperiment != lastTopDisplayedExperiment) {
       experimentsToDisplay = min(experimentsPerScreen, topDisplayedExperiment);
-      Serial.print("Loading experiments ");
+      Serial.print(F("Loading experiments "));
       Serial.println(millis());
       for (int i = 0; i < experimentsToDisplay; ++i) {
         int expDisplayIdx = experimentsToDisplay - 1 - i;
@@ -1118,7 +1115,7 @@ void browseExperimentsScreen(uint8_t ignore) {
         db.getExperiment(expIdx, browseExperiments[expDisplayIdx]);
         browseExperimentsIdx[expDisplayIdx] = expIdx;
       }
-      Serial.print("Loaded experiments ");
+      Serial.print(F("Loaded experiments "));
       Serial.println(millis());
       lastTopDisplayedExperiment = topDisplayedExperiment;
     }
@@ -1176,10 +1173,12 @@ void browseExperimentsScreen(uint8_t ignore) {
     FTImpl.DLEnd();
 
     uint8_t buttonPressTag = kpt.waitForChange(currentPressedTag);
-    Serial.print("button pressed: ");
+#ifdef DEBUG
+    Serial.print(F("button pressed: "));
     Serial.print(buttonPressTag);
-    Serial.print(" currentPressedTag: ");
+    Serial.print(F(" currentPressedTag: "));
     Serial.println(currentPressedTag);
+#endif
 
     if (kBackButtonTag == buttonPressTag) {
       setNextScreen(DisplayScreen::kDisplayScreenHome);
@@ -1194,7 +1193,7 @@ void browseExperimentsScreen(uint8_t ignore) {
         topDisplayedExperiment += experimentsPerScreen;
       }
     } else if (0 < buttonPressTag && buttonPressTag <= experimentsToDisplay) {
-      Serial.println("Setting next screen kDisplayScreenShowSavedExp");
+      Serial.println(F("Setting next screen kDisplayScreenShowSavedExp"));
       setNextScreen(DisplayScreen::kDisplayScreenShowSavedExp);
       const uint8_t selectedExp = buttonPressTag - 1;
       strcpy(currentExp.name, browseExperiments[selectedExp].name);
@@ -1212,7 +1211,7 @@ void browseExperimentsScreen(uint8_t ignore) {
 }
 
 void savedExperimentScreen() {
-  Serial.println("TRACE: savedExperimentScreen");
+  Serial.println(F("TRACE: savedExperimentScreen"));
 
   char labelBuffer[30];
   uint8_t currentPressedTag = 0;
@@ -1453,7 +1452,7 @@ void setDateScreen() {
         TimeAndDate[TimePointer[TimeDigit]] = TimeMax[TimeDigit];
       delay(200);
     } else if (kSaveButtonTag == buttonPressTag) {
-      Serial.println("Save date");
+      Serial.println(F("Save date"));
       SetTimeDate(TimeAndDate[TimePointer[0]], TimeAndDate[TimePointer[1]],
                   TimeAndDate[TimePointer[2]], TimeAndDate[TimePointer[3]],
                   TimeAndDate[TimePointer[4]], TimeAndDate[TimePointer[5]]);
@@ -1749,13 +1748,13 @@ void loop() {
           // Current = Float;
           Current = tmpNewCurrent;
           SetCurrent = (0.26 + 0.94 * (float)Current / 100.0) / 5.0 * 255;
-          Serial.print("Current set to: ");
+          Serial.print(F("Current set to: "));
           Serial.println(SetCurrent);
           FirstPass = true;
           tagval = 18;
         } else if (Screen == 4)  //= TIE
         {
-          Serial.println("Run");
+          Serial.println(F("Run"));
           Screen = 6;
         }
       }
@@ -1901,7 +1900,7 @@ int16_t BootupConfigure() {
 
   /* Identify the chip */
   if (FT801_CHIPID != chipid) {
-    Serial.print("Error in chip id read ");
+    Serial.print(F("Error in chip id read "));
     Serial.println(chipid, HEX);
     return 1;
   }
@@ -1934,7 +1933,7 @@ void CheckStorageDevicePresence() {
 }
 
 void RTC_init() {
-  Serial.println("RTC_init_start");
+  Serial.println(F("RTC_init_start"));
 
   // start the SPI library:
   Serial.print("1");
@@ -1954,7 +1953,7 @@ void RTC_init() {
   Serial.print("6");
   SPI.setDataMode(SPI_MODE0);
   delay(10);
-  Serial.println("RTC_init_end");
+  Serial.println(F("RTC_init_end"));
 }
 
 //=====================================
@@ -2073,7 +2072,7 @@ NotepadResult Notepad(const char *initialText) {
     Buffer.notepad[0][noofchars] = initialText[noofchars];
   }
 
-  Serial.print("buffer: ");
+  Serial.print(F("buffer: "));
   Serial.println(Buffer.notepad[Line]);
 
   /*intial setup*/
@@ -2091,7 +2090,7 @@ NotepadResult Notepad(const char *initialText) {
   // Serial.println(Read_sfk);
   // Serial.println(Line);
   // Serial.println(Disp_pos);
-  Serial.print("buffer: ");
+  Serial.print(F("buffer: "));
   Serial.println(Buffer.notepad[Line]);
 
   uint8_t buttonPressTag = 0;
@@ -2153,7 +2152,7 @@ NotepadResult Notepad(const char *initialText) {
               (Buffer.notepad[Line] + noofchars);  // load into temporary buffer
           Buffer.temp[0] = '_';                    // update the string
           Buffer.temp[1] = '\0';
-          Serial.print("BACKSPACE buffer: ");
+          Serial.print(F("BACKSPACE buffer: "));
           Serial.println(Buffer.notepad[Line]);
           break;
 
@@ -2189,9 +2188,9 @@ NotepadResult Notepad(const char *initialText) {
         Buffer.notepad[Line][noofchars] = '_';
         Buffer.notepad[Line][noofchars + 1] = '\0';
 
-        Serial.print("Add char ");
+        Serial.print(F("Add char "));
         Serial.print(buttonPressTag);
-        Serial.print(" buffer: ");
+        Serial.print(F(" buffer: "));
         Serial.println(Buffer.notepad[Line]);
         // Serial.print(noofchars);
         /*if(Disp_pos > LINE_ENDPOS)                                        //
@@ -2326,9 +2325,9 @@ NotepadResult Notepad(const char *initialText) {
     FTImpl.Finish();
 
     buttonPressTag = kpt.waitForChange(currentPressedTag);
-    Serial.print("Notepad screen button pressed: ");
+    Serial.print(F("Notepad screen button pressed: "));
     Serial.print(buttonPressTag);
-    Serial.print(" selectedTag: ");
+    Serial.print(F(" selectedTag: "));
     Serial.println(currentPressedTag);
 
   } while (1);
