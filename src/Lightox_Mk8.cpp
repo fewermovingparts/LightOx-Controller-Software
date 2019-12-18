@@ -1001,7 +1001,6 @@ void runScreen(uint8_t currentTag) {
       FTImpl.Cmd_Text(leftColValEndSS + 1, 180 - 3, 26, 0, "2");
 
       FTImpl.Cmd_Text(310, 160, 29, 0, "Temp:");
-      Temperature = 25.1;
       if (Temperature != -127) {
         sprintf_P(labelBuffer, PSTR("%d.%01d C"), int(Temperature),
                   int(Temperature * 10) % 10);
