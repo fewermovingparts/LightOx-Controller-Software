@@ -53,9 +53,6 @@ OneWire oneWire(53);  // Data wire is plugged into pin 53 on the Arduino pulled
 // Pass our oneWire reference to Dallas Temperature.
 DallasTemperature sensors(&oneWire);
 
-// Software serial for Flash drive
-SoftwareSerial mySerial(A15, A14);  // RX, TX
-
 #define FLASH_IN A13
 #define RTC_CS 26   // RTC chip select
 #define RTC_GND 38  // RTC 0V for power
@@ -84,6 +81,9 @@ SdFat sd;
 
 // Log file.
 SdFile file;
+
+// USB flash drive host chip on Serial3, pins 15 and 14
+Ch376msc flashDrive(Serial3, 115200);
 
 //                              0           1         2         3        4 5 6
 //                              7         8           9          10
@@ -277,7 +277,6 @@ void setup(void) {
   digitalWrite(FAN, LOW);
 
   Serial.begin(9600);
-  mySerial.begin(9600);
   Serial.println("Setup....");
 
   sensors.begin();  // start up the Dallas sensors library
@@ -313,6 +312,10 @@ void setup(void) {
     Serial.println("failed!");
   }
   Serial.println("OK!");
+
+  Serial.print("Initialising flash drive USB host ");
+  flashDrive.init();
+  Serial.println(flashDrive.pingDevice() ? "OK" : "failed");
 
   EEPROM.get(eeAddress, EnergyDensity);
   // EnergyDensity = 188;
@@ -1466,6 +1469,114 @@ void setDateScreen() {
   }
 }
 
+// Returns true if a flash drive was inserted
+// false if the user clicked cancel
+bool waitForFlashDrive() {
+  uint8_t currentPressedTag = 0;
+  KeyPressTracker kpt(&FTImpl);
+  bool flashDriveInserted = false;
+  while (!(flashDriveInserted = flashDrive.checkDrive())) {
+    displayStartWhite();
+    showExpHeader("Export log files", nullptr);
+    FTImpl.ColorRGB(0x0);
+    FTImpl.Cmd_Text(FT_DISPLAY_HSIZE / 2, FT_DISPLAY_VSIZE / 2, kFont, FT_OPT_CENTER, "Please insert USB flash drive");
+    constexpr uint8_t kCancelButtonTag = 1;
+    FTImpl.TagMask(1);
+    FTImpl.ColorRGB(0xFFFFFF);
+    drawBottomLeftButton(kCancelButtonTag, "Cancel", currentPressedTag);
+    FTImpl.DLEnd();
+
+    const uint8_t buttonPressTag = kpt.getButtonPressTag(currentPressedTag);
+    if (kCancelButtonTag == buttonPressTag) {
+      break;
+    }
+  }
+  return flashDriveInserted;
+}
+
+void showCopyFileScreen(const char *filename) {
+  displayStartWhite();
+  showExpHeader("Export log files", nullptr);
+  FTImpl.ColorRGB(0x0);
+  FTImpl.Cmd_Text(FT_DISPLAY_HSIZE / 2, FT_DISPLAY_VSIZE / 2 - 20, kFont, FT_OPT_CENTER, "Exporting file:");
+  FTImpl.Cmd_Text(FT_DISPLAY_HSIZE / 2, FT_DISPLAY_VSIZE / 2 + 20, kFont, FT_OPT_CENTER, filename);
+  FTImpl.DLEnd();
+}
+
+void showExportResult(int logCopyCount) {
+  uint8_t currentPressedTag = 0;
+  KeyPressTracker kpt(&FTImpl);
+  uint8_t buttonPressTag = 0;
+  constexpr uint8_t kDoneButtonTag = 1;
+  do {
+    displayStartWhite();
+    showExpHeader("Export log files", nullptr);
+    FTImpl.ColorRGB(0x0);
+    FTImpl.Cmd_Text(FT_DISPLAY_HSIZE / 2, FT_DISPLAY_VSIZE / 2 - 20, kFont, FT_OPT_CENTER, "Export complete");
+    char filesCopiedStr[30];
+    sprintf_P(filesCopiedStr, PSTR("%d log files copied"), logCopyCount);
+    FTImpl.Cmd_Text(FT_DISPLAY_HSIZE / 2, FT_DISPLAY_VSIZE / 2 + 20, kFont, FT_OPT_CENTER, filesCopiedStr);
+    FTImpl.TagMask(1);
+    FTImpl.ColorRGB(0xFFFFFF);
+    drawBottomRightButton(kDoneButtonTag, "Done", currentPressedTag);
+    FTImpl.DLEnd();
+
+    buttonPressTag = kpt.getButtonPressTag(currentPressedTag);
+  } while (buttonPressTag != kDoneButtonTag);
+}
+
+void exportScreen() {
+  const bool flashDriveInserted = waitForFlashDrive();
+  if (!flashDriveInserted) {
+    setNextScreen(DisplayScreen::OptionsScreen);
+    return;
+  }
+
+  int logCopyCount = 0;
+  FatFile logFile;
+  FatFile logDir;
+  if (logDir.open("/LOGS")) {
+    while (logFile.openNext(&logDir, O_RDONLY)) {
+      if (logFile.isDir() || logFile.isHidden()) {
+        continue;
+      }
+      logFile.printName();
+
+      if (!flashDrive.checkDrive()) {
+        Serial.print(F("No flash drive found"));
+        // Error message
+      } else {
+        char flashFile[13];
+        if (logFile.getName(flashFile, sizeof(flashFile)/ sizeof(*flashFile))) {
+          showCopyFileScreen(flashFile);
+          flashDrive.setFileName(flashFile);
+          // TODO check if file already exists
+          flashDrive.openFile(); // todo check return value
+          char transferBuffer[128];
+          while (logFile.available()) {
+            int nBytes = logFile.read(transferBuffer, sizeof(transferBuffer)/sizeof(*transferBuffer));
+            if (nBytes < 0) {
+              //TODO error handling
+            }
+            if (nBytes > 0) {
+              const bool spaceLeft = flashDrive.writeFile(transferBuffer, nBytes);
+              if (!spaceLeft) {
+                // TODO error handling
+              }
+            }
+          }
+          flashDrive.closeFile();
+          logFile.close();
+          logFile.remove();
+          logCopyCount++;
+        }
+      }
+    }
+  }
+
+  showExportResult(logCopyCount);
+}
+
 void loop() {
   // newscreen
   sTagXY sTagxy;
@@ -1477,12 +1588,7 @@ void loop() {
   char strNewEnergyDensity[15];
   // end sliders
 
-  File LogFile2;
   float Float;
-  char sdlogbuffer[80], sdlog;
-  int logpointer = 0, logcopycount = 0;
-  char FlashFile[27] = {'$', 'W', 'R', 'I', 'T', 'E', ' ', 'L', 'O', 'G',
-                        '0', '0', '0', '0', '0', '.', 'C', 'S', 'V'};
 
   Screen = 0;  // 5;
   setNextScreen(DisplayScreen::kDisplayScreenHome);
@@ -1660,164 +1766,6 @@ void loop() {
         Screen = 2;
       }
 
-      if (tagval == 16)  // Copy files
-      {
-        Screen = 9;
-        LogRef = 0;
-        logcopycount = 0;
-
-        // do
-        //{
-        //  if(mySerial.available()>0) checkfileexist[0] = mySerial.read();
-        //}while(!mySerial.available());  //make sure the buffer is empty
-
-        // sprintf(checkfileexist,"$size %s line\r","LOG00001.CSV");
-        // mySerial.write(checkfileexist);
-        // i = 0;
-        // do
-        //{
-        //  i++;
-        //}while((!mySerial.available()) && (i < 32000));        // Wait for
-        // data
-        // to be returned
-
-        if (1 == 2) {
-          Serial.println("File exists");
-          FTImpl
-              .Cmd_DLStart();  // start new display list - ends with
-                               // DL_swap///////////////////////////////////////////////////////////////////////////////////////
-          FTImpl.Begin(FT_BITMAPS);      // Start a new graphics primitive
-          FTImpl.Vertex2ii(0, 0, 0, 0);  // Draw primitive
-          FTImpl.BitmapHandle(0);
-          FTImpl.BitmapSource(0);
-          FTImpl.BitmapLayout(FT_RGB565, 480L * 2, 272);
-          FTImpl.BitmapSize(FT_NEAREST, FT_BORDER, FT_BORDER, 480, 272);
-          FTImpl.ColorRGB(0xff, 0xff, 0xff);
-          FTImpl.Cmd_Text(230, 80, 31, FT_OPT_CENTER, "Flash drive not empty");
-          FTImpl.Display();
-          FTImpl.Cmd_Swap();
-          FTImpl.Finish();
-          delay(5000);
-        } else {
-          do {
-            LogRef++;
-            LogFileName[11] =
-                char(48 + int(LogRef / 100));  // can cope with up to 999 files
-            LogFileName[12] =
-                char(48 + int((LogRef - int(LogRef / 100) * 100) / 10));
-            LogFileName[13] = char(48 + int(LogRef - int(LogRef / 10) * 10));
-            Serial.println(LogFileName);
-            if (sd.exists(LogFileName)) {
-              // copy file
-              if (!(LogFile2 = sd.open(LogFileName))) {
-                Serial.print(F("Log file not found"));
-              } else {
-                if (!digitalRead(
-                        FLASH_IN))  // make sure flash drive is inserted
-                {
-                  Serial.print(F("No flash drive found"));
-                } else {
-                  for (int8_t i = 11; i < 14; i++)
-                    FlashFile[i + 1] = LogFileName[i];
-                  flash_data(FlashFile, true);  // open file for write
-                  delay(1000);  // Needs extra time to create the file.
-                                // Depends on flash drive used
-                  logcopycount++;
-                  LineCount = 0;
-
-                  // clear the log buffer
-                  memset(sdlogbuffer, '\0',
-                         sizeof(sdlogbuffer) / sizeof(*sdlogbuffer));
-                  while (LogFile2.available() > 0) {
-                    sdlog = LogFile2.read();
-                    if (sdlog != char(13)) {
-                      sdlogbuffer[logpointer++] = sdlog;
-                    } else {
-                      LineCount++;
-                      FTImpl
-                          .Cmd_DLStart();  // start new display list - ends with
-                                           // DL_swap///////////////////////////////////////////////////////////////////////////////////////
-                      FTImpl.Begin(
-                          FT_BITMAPS);  // Start a new graphics primitive
-                      FTImpl.ClearColorRGB(100, 100, 100);
-                      FTImpl.Clear(1, 1, 1);
-                      FTImpl.Vertex2ii(0, 0, 0, 0);  // Draw primitive
-                      FTImpl.BitmapHandle(0);
-                      FTImpl.BitmapSource(0);
-                      FTImpl.BitmapLayout(FT_RGB565, 480L * 2, 272);
-                      FTImpl.BitmapSize(FT_NEAREST, FT_BORDER, FT_BORDER, 480,
-                                        272);
-                      FTImpl.ColorRGB(0xff, 0xff, 0xff);
-                      FTImpl.Cmd_Text(230, 50, 31, FT_OPT_CENTER,
-                                      "Copying....");
-                      FTImpl.Cmd_Text(230, 100, 29, FT_OPT_CENTER, "File:");
-                      FTImpl.Cmd_Text(230, 130, 29, FT_OPT_CENTER, LogFileName);
-                      LineCountString[0] = char(
-                          48 + int(LineCount /
-                                   1000));  // can cope with up to 9999 lines
-                      LineCountString[1] = char(
-                          48 + int((LineCount - int(LineCount / 1000) * 1000) /
-                                   100));
-                      LineCountString[2] = char(
-                          48 +
-                          int((LineCount - int(LineCount / 100) * 100) / 10));
-                      LineCountString[3] =
-                          char(48 + int(LineCount - int(LineCount / 10) * 10));
-                      LineCountString[4] = '\0';
-                      FTImpl.Cmd_Text(230, 160, 29, FT_OPT_CENTER, "Line:");
-                      FTImpl.Cmd_Text(230, 190, 29, FT_OPT_CENTER,
-                                      LineCountString);
-                      // Serial.println(LineCountString);
-                      FTImpl.Display();
-                      FTImpl.Cmd_Swap();
-                      FTImpl.Finish();
-
-                      flash_data(sdlogbuffer, false);
-                      memset(sdlogbuffer, '\0', logpointer);
-                      logpointer = 0;
-                    }
-                  }
-                  // Close the file by sending Control-Z
-                  mySerial.write(26);  // 26 is Control-Z character
-                  LogFile2.close();
-                  sd.remove(LogFileName);  // delete the logfile
-                }
-              }
-            } else {
-              LogRef = 0;
-              delay(2000);
-              Screen = 1;
-            }
-          } while (LogRef > 0);
-
-          FTImpl
-              .Cmd_DLStart();  // start new display list - ends with
-                               // DL_swap///////////////////////////////////////////////////////////////////////////////////////
-          FTImpl.Begin(FT_BITMAPS);  // Start a new graphics primitive
-          FTImpl.ClearColorRGB(100, 100, 100);
-          FTImpl.Clear(1, 1, 1);
-          FTImpl.Vertex2ii(0, 0, 0, 0);  // Draw primitive
-          FTImpl.BitmapHandle(0);
-          FTImpl.BitmapSource(0);
-          FTImpl.BitmapLayout(FT_RGB565, 480L * 2, 272);
-          FTImpl.BitmapSize(FT_NEAREST, FT_BORDER, FT_BORDER, 480, 272);
-          FTImpl.ColorRGB(0xff, 0xff, 0xff);
-          LineCountString[0] = char(
-              48 + int(logcopycount / 100));  // can cope with up to 999 lines
-          LineCountString[1] = char(
-              48 + int((logcopycount - int(logcopycount / 100) * 100) / 10));
-          LineCountString[2] =
-              char(48 + int(logcopycount - int(logcopycount / 10) * 10));
-          LineCountString[3] = '\0';
-          FTImpl.Cmd_Text(230, 160, 29, FT_OPT_CENTER, LineCountString);
-          FTImpl.Cmd_Text(230, 190, 29, FT_OPT_CENTER, "Files copied.");
-          FTImpl.Display();
-          FTImpl.Cmd_Swap();
-          FTImpl.Finish();
-          delay(2000);
-        }
-      }
-
       if (tagval == 17)  // Product info
       {
         Screen = 10;
@@ -1984,13 +1932,6 @@ void CheckStorageDevicePresence() {
     FTImpl.Finish();
     delay(1000);
   }
-}
-
-// Create a printing function which has a built-in delay
-void flash_data(char *pstring, boolean Print) {
-  if (Print) Serial.println(pstring);
-  mySerial.println(pstring);
-  delay(50);
 }
 
 void RTC_init() {

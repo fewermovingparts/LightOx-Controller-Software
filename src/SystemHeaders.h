@@ -11,6 +11,7 @@
 
 
 #include <BlockDriver.h>
+#include <Ch376msc.h>
 #include <FreeStack.h>
 #include <MinimumSerial.h>
 #include <SdFat.h>  //SD card library
