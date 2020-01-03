@@ -96,12 +96,8 @@ int Screen = 0;  // Screen =   0             1          2            3 4 5 6
 boolean RecordOn = true;
 int32_t Current = 100, NewCurrent, NC;  // Current in %
 float SetCurrent = 1.2 / 5.0 * 255;     // SetCurrent in 0-5V converted to 0-255
-int iTime, ds, OldiTime, it;
-unsigned long msTime, msTimeLid;
-int uv2 = 0;
-uint16_t uvValue;
-char uvPrintVal[8];
-char uvPrint[15] = {'u', 'v', ' ', '=', ' ', '0', '0', '0', '0', '0', '\0'};
+int ds, it;
+
 char tempPrintValA[3], tempPrintValB[3];
 char tempPrint[15] = {'t', 'e', 'm', 'p', ' ', '=', ' ',
                       '0', '0', '0', '.', '0', '\0'};
@@ -141,7 +137,7 @@ const int kCalibrationAddress = 10;
 constexpr byte kCalibrationMagicByte = kRotateScreen ? 0x55 : 0xAA;
 const int kCalibrationNumBytes = 24;
 bool needsCalibration = true;
-bool FirstPass = false, LidOpen = false;
+bool FirstPass = false;
 
 const int32_t kDefaultIrradience = 50;
 const int32_t kDefaultTime = 5 * 60;
@@ -873,11 +869,14 @@ void runScreen(uint8_t currentTag) {
   analogWrite(PWM,
               int((float)currentExp.irradience * 2.55));  // LEDs power setting
 
-  msTime = millis();
+  unsigned long msTime = millis();
+  unsigned long msTimeLid = millis();
 
-  OldiTime = -1;
-  LidOpen = false;
-  uvPrintVal[0] = '\0';
+  int32_t iTime = currentExp.time;
+  int32_t OldiTime = -1;
+  bool LidOpen = false;
+  float Temperature = -127;
+  uint16_t uvValue = 0;
 
   uint8_t currentPressedTag = 0;
   KeyPressTracker kpt(&FTImpl);
@@ -902,7 +901,6 @@ void runScreen(uint8_t currentTag) {
     }
     if (!LidOpen) iTime = currentExp.time - int((millis() - msTime) / 1000);
 
-    float Temperature;
     if (OldiTime != iTime)  // into a new second, so save results
     {
       OldiTime = iTime;
@@ -912,12 +910,6 @@ void runScreen(uint8_t currentTag) {
       Serial.print(", uv = ");
       LogFile2.print(", ");
       uvValue = uv.readUV();
-      sprintf(uvPrintVal, "%05i",
-              uvValue);  //%0 left pads the number with zeros, 5 = width,
-                         // i = signed decimal integer
-      for (int8_t i = 0; i < 5; i++) {
-        uvPrint[i + 5] = uvPrintVal[i];
-      }
       Serial.print(uvValue);
       LogFile2.print(uvValue);
       Serial.print(", t = ");
@@ -1018,14 +1010,12 @@ void runScreen(uint8_t currentTag) {
     if (kAbortButtonTag == buttonPressTag) {
       Serial.println(F("Abort hit"));
       LogFile2.println(F("Abort hit"));
-      LidOpen = false;
-      goto EscapeNestedLoops;
+      break;
     }
   } while (iTime > 0);  // end of do loop
 
   analogWrite(PWM, 0);
 
-EscapeNestedLoops:
   Serial.println(iTime);
   digitalWrite(FAN, LOW);
   analogWrite(ADM, 0);
