@@ -1869,13 +1869,13 @@ void Load_Jpeg(
 }
 
 void Loadimage2ram() {
-  FtSd.OpenFile(Imagefile, imagename[Screen]);
-  FTImpl.WriteCmd(CMD_LOADIMAGE);
-  FTImpl.WriteCmd(
-      0);  // pointer - was 500: 100  262144L instead of 500 gives blank pages
-  FTImpl.WriteCmd(0);
-  Load_Jpeg(Imagefile);
-  return;
+  if (FT_SD_OK == FtSd.OpenFile(Imagefile, imagename[Screen])) {
+    FTImpl.Cmd_LoadImage(FT_RAM_G, FT_OPT_NODL);
+    Load_Jpeg(Imagefile);
+  } else {
+    Serial.print(F("Failed to load image: "));
+    Serial.println(imagename[Screen]);
+  }
 }
 
 /* Api to bootup ft801, verify FT801 hardware and configure display/audio pins
