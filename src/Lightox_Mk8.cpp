@@ -954,7 +954,7 @@ void runScreen(uint8_t currentTag) {
 
     char labelBuffer[12] = {'\0'};
     FTImpl.Cmd_Text(leftColumnStart, 60, 31, 0, "Time remaining:");
-    sprintf_P(labelBuffer, PSTR("%d:%02d"), iTime / 60, iTime % 60);
+    sprintf_P(labelBuffer, PSTR("%" PRId32 ":%02" PRId32), iTime / 60, iTime % 60);
     FTImpl.Cmd_Text(FT_DISPLAYWIDTH - leftColumnStart, 60, 31, FT_OPT_RIGHTX,
                     labelBuffer);
 
