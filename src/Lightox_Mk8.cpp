@@ -947,60 +947,67 @@ void runScreen(uint8_t currentTag) {
     showExpHeader(currentExp.name, currentExp.datetime);
     const uint8_t kAbortButtonTag = 13;
     drawBottomMiddleButton(kAbortButtonTag, "Abort", currentPressedTag);
+    FTImpl.TagMask(0);
 
     FTImpl.ColorRGB(0x000000);
-
-    const uint16_t leftColumnStart = 2 * kBorderPixels;
-
-    char labelBuffer[12] = {'\0'};
-    FTImpl.Cmd_Text(leftColumnStart, 60, 31, 0, "Time remaining:");
-    sprintf_P(labelBuffer, PSTR("%" PRId32 ":%02" PRId32), iTime / 60, iTime % 60);
-    FTImpl.Cmd_Text(FT_DISPLAYWIDTH - leftColumnStart, 60, 31, FT_OPT_RIGHTX,
-                    labelBuffer);
 
     if (LidOpen) {
       FTImpl.Cmd_Text(FT_DISPLAYWIDTH / 2, 120, 31, FT_OPT_CENTER, "Close Lid");
     } else {
       const uint8_t settingsFont = 27;
       const uint16_t leftColumnValEnd = 2 * kBorderPixels + 256;
+      const uint16_t leftColumnStart = 2 * kBorderPixels;
 
+      char labelBuffer[12] = {'\0'};
+      uint16_t rowPos = 60;
+
+      FTImpl.Cmd_Text(leftColumnStart, rowPos, 31, 0, "Time remaining:");
+      sprintf_P(labelBuffer, PSTR("%" PRId32 ":%02" PRId32), iTime / 60, iTime % 60);
+      FTImpl.Cmd_Text(FT_DISPLAYWIDTH - leftColumnStart, 60, 31, FT_OPT_RIGHTX,
+                      labelBuffer);
+
+      rowPos += 60;
       sprintf(labelBuffer, "%" PRId32 ":%02" PRId32, currentExp.time / 60,
               currentExp.time % 60);
-      FTImpl.Cmd_Text(leftColumnStart, 120, settingsFont, 0, "Duration:");
-      FTImpl.Cmd_Text(leftColumnValEnd, 120, settingsFont, FT_OPT_RIGHTX,
+      FTImpl.Cmd_Text(leftColumnStart, rowPos, settingsFont, 0, "Duration:");
+      FTImpl.Cmd_Text(leftColumnValEnd, rowPos, settingsFont, FT_OPT_RIGHTX,
                       labelBuffer);
-      sprintf(labelBuffer, "%" PRId32 " mW/mm", currentExp.irradience);
-      FTImpl.Cmd_Text(leftColumnStart, 150, settingsFont, 0, "Intensity:");
-      const uint8_t superscriptCharWidth = Ft_Gpu_Rom_Font_WH('2', 26);
-      const uint16_t leftColValEndSS =
-          leftColumnValEnd - 1 - superscriptCharWidth;
-      FTImpl.Cmd_Text(leftColValEndSS, 150, settingsFont, FT_OPT_RIGHTX,
-                      labelBuffer);
-      FTImpl.Cmd_Text(leftColValEndSS + 1, 150 - 3, 26, 0, "2");
-      //      sprintf(OutputValue, "%03" PRId32, Current);s
-      //      FTImpl.Cmd_Text(300, 150, 28, FT_OPT_CENTERX, "Current (%):");
-      //      FTImpl.Cmd_Text(450, 150, 28, FT_OPT_RIGHTX, OutputValue);
-      sprintf(labelBuffer, "%" PRId32 " mJ/mm", currentExp.energy);
-      FTImpl.Cmd_Text(leftColumnStart, 150, settingsFont, 0, "");
-      FTImpl.Cmd_Text(leftColumnStart, 180, settingsFont, 0, "Energy density:");
-      FTImpl.Cmd_Text(leftColValEndSS, 180, settingsFont, FT_OPT_RIGHTX,
-                      labelBuffer);
-      FTImpl.Cmd_Text(leftColValEndSS + 1, 180 - 3, 26, 0, "2");
 
-      FTImpl.Cmd_Text(310, 160, 29, 0, "Temp:");
+      FTImpl.Cmd_Text(310, rowPos, settingsFont, 0, "Temp:");
       if (Temperature != -127) {
         sprintf_P(labelBuffer, PSTR("%d.%01d C"), int(Temperature),
                   int(Temperature * 10) % 10);
       } else {
         strcpy_P(labelBuffer, PSTR("Error"));
       }
-      FTImpl.Cmd_Text(FT_DISPLAYWIDTH - leftColumnStart, 160, 29, FT_OPT_RIGHTX,
+      FTImpl.Cmd_Text(FT_DISPLAYWIDTH - leftColumnStart, rowPos, settingsFont, FT_OPT_RIGHTX,
                       labelBuffer);
 
-      FTImpl.Cmd_Text(340, 120, 29, 0, "UV:");
-      sprintf_P(labelBuffer, PSTR("%d"), uvValue);
-      FTImpl.Cmd_Text(FT_DISPLAYWIDTH - leftColumnStart, 120, 29, FT_OPT_RIGHTX,
+      rowPos += 30;
+      sprintf(labelBuffer, "%" PRId32 " mW/mm", currentExp.irradience);
+      FTImpl.Cmd_Text(leftColumnStart, rowPos, settingsFont, 0, "Intensity:");
+      const uint8_t superscriptCharWidth = Ft_Gpu_Rom_Font_WH('2', 26);
+      const uint16_t leftColValEndSS =
+          leftColumnValEnd - 1 - superscriptCharWidth;
+      FTImpl.Cmd_Text(leftColValEndSS, rowPos, settingsFont, FT_OPT_RIGHTX,
                       labelBuffer);
+      FTImpl.Cmd_Text(leftColValEndSS + 1, rowPos - 3, 26, 0, "2");
+
+      FTImpl.Cmd_Text(310, rowPos, settingsFont, 0, "UV:");
+      sprintf_P(labelBuffer, PSTR("%d"), uvValue);
+      FTImpl.Cmd_Text(FT_DISPLAYWIDTH - leftColumnStart, rowPos, settingsFont, FT_OPT_RIGHTX,
+                      labelBuffer);
+
+      //      sprintf(OutputValue, "%03" PRId32, Current);s
+      //      FTImpl.Cmd_Text(300, 150, 28, FT_OPT_CENTERX, "Current (%):");
+      //      FTImpl.Cmd_Text(450, 150, 28, FT_OPT_RIGHTX, OutputValue);
+
+      rowPos += 30;
+      sprintf(labelBuffer, "%" PRId32 " mJ/mm", currentExp.energy);
+      FTImpl.Cmd_Text(leftColumnStart, rowPos, settingsFont, 0, "Energy density:");
+      FTImpl.Cmd_Text(leftColValEndSS, rowPos, settingsFont, FT_OPT_RIGHTX,
+                      labelBuffer);
+      FTImpl.Cmd_Text(leftColValEndSS + 1, rowPos - 3, 26, 0, "2");
     }
     FTImpl.Display();
     FTImpl.Cmd_Swap();
