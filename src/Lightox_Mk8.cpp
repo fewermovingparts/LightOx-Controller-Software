@@ -1544,6 +1544,7 @@ void exportScreen() {
       } else {
         char flashFile[13];
         if (logFile.getName(flashFile, sizeof(flashFile)/ sizeof(*flashFile))) {
+          flashDrive.cd("/LOGS", true /* make if missing */);
           showCopyFileScreen(flashFile);
           flashDrive.setFileName(flashFile);
           // TODO check if file already exists
