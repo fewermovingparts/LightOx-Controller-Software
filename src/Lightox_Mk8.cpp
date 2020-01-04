@@ -366,6 +366,7 @@ enum class DisplayScreen {
   AboutScreen,
   SetDateTimeScreen,
   ExportScreen,
+  ConfigureLedScreen,
   kDisplayScreenNone,
 };
 bool screenJustSelected = true;
@@ -1304,7 +1305,7 @@ void optionScreen() {
         done = true;
         break;
       case kSettingsButtonTag:
-        setNextScreen(DisplayScreen::kDisplayScreenHome);  // TODO Fixme
+        setNextScreen(DisplayScreen::ConfigureLedScreen);
         done = true;
         break;
       case kAboutButtonTag:
@@ -1574,222 +1575,127 @@ void exportScreen() {
   showExportResult(logCopyCount);
 }
 
+int32_t savedCurrentPercent = 100;
+int32_t savedPowerDensityMicroWatts = 230;
+
+void configureLedScreen() {
+  int32_t powerDensity = savedPowerDensityMicroWatts;
+  int32_t currentPercent = savedCurrentPercent;
+  constexpr int32_t kMaxPowerDensity = 300;
+  constexpr int32_t kMaxCurrentPercent = 100;
+
+  NotepadResult notepadResult = Notepad();
+  Serial.print("buffer ");
+  Serial.println(Buffer.notepad[0]);
+  if (NotepadResult::kNotepadResultQuit == notepadResult || 0 != strcmp_P(Buffer.notepad[0], PSTR("3333"))) {
+    setNextScreen(DisplayScreen::OptionsScreen);
+    return;
+  }
+
+  uint8_t currentPressedTag = 0;
+  KeyPressTracker kpt(&FTImpl);
+  while (true) {
+    constexpr uint8_t kSaveButtonTag = 14;
+    constexpr uint8_t kBackButtonTag = 15;
+    constexpr uint8_t kCurrentSliderTag = 19;
+    constexpr uint8_t kPowerDensitySliderTag = 20;
+    drawBottomRightButton(kSaveButtonTag, "Save", currentPressedTag);
+    drawBottomLeftButton(kBackButtonTag, "Cancel", currentPressedTag);
+
+    // Slider definition and operation
+    /* Set the tracker for 2 sliders */
+    FTImpl.Cmd_Track(40, 100, 400, 8, kCurrentSliderTag);
+    FTImpl.Cmd_Track(40, 200, 400, 8, kPowerDensitySliderTag);
+
+    const uint8_t buttonPressTag = kpt.getButtonPressTag(currentPressedTag);
+    const uint32_t TrackRegisterVal = FTImpl.Read32(REG_TRACKER);
+    const uint8_t currentSliderTag = TrackRegisterVal & 0xff;
+    const int32_t sliderTrackerVal = TrackRegisterVal >> 16;
+
+    if (kCurrentSliderTag == currentSliderTag) {
+      currentPercent = (kMaxCurrentPercent * sliderTrackerVal) / 65535;
+      currentPercent = max(1, currentPercent);
+    } else if (kPowerDensitySliderTag == currentSliderTag) {
+      powerDensity = (kMaxPowerDensity * sliderTrackerVal) / 65535;
+      // Clip to the nearest 10 microWatts
+      powerDensity = (powerDensity / 10) * 10;
+    }
+
+    if (kSaveButtonTag == buttonPressTag) {
+      //when save is pressed:
+      savedPowerDensityMicroWatts = powerDensity;
+      savedCurrentPercent = currentPercent;
+
+      EEPROM.put(eeAddress, savedPowerDensityMicroWatts);
+      // TODO save current percentage to eeprom
+      //SetCurrent = (0.26 + 0.94 * (float)savedCurrentPercent / 100.0) / 5.0 * 255;
+      Serial.print(F("Current set to: "));
+      Serial.println(savedCurrentPercent);
+      setNextScreen(DisplayScreen::OptionsScreen);
+      break;
+    } else if (kBackButtonTag == buttonPressTag) {
+      setNextScreen(DisplayScreen::OptionsScreen);
+      break;
+    }
+
+    displayStartWhite();
+    FTImpl.ColorRGB(kColourSeconday);
+    if (savedCurrentPercent != currentPercent) FTImpl.ColorRGB(255, 0, 0);
+    FTImpl.Cmd_FGColor(kColourPrimary);
+    FTImpl.Cmd_BGColor(kColourLight);
+    FTImpl.Tag(kCurrentSliderTag);
+    FTImpl.Cmd_Slider(40, 40, 400, 20, 0, currentPercent, kMaxCurrentPercent);
+    FTImpl.ColorRGB(kColourSeconday);
+    if (savedPowerDensityMicroWatts != powerDensity) FTImpl.ColorRGB(255, 0, 0);
+    FTImpl.Tag(kPowerDensitySliderTag);
+    FTImpl.Cmd_Slider(40, 100, 400, 20, 0, powerDensity, kMaxPowerDensity);
+
+    FTImpl.TagMask(0);
+    FTImpl.ColorRGB(0);
+
+    char labelBuffer[30];
+    sprintf_P(labelBuffer, PSTR("Current: %" PRId32 " %%"), currentPercent);
+    FTImpl.Cmd_Text(60, 20, 26, FT_OPT_CENTERY, labelBuffer);
+
+    sprintf_P(labelBuffer, PSTR("Power Density: 0.%03" PRId32 " mW/mm2"), powerDensity);
+    FTImpl.Cmd_Text(60, 80, 26, FT_OPT_CENTERY, labelBuffer);
+
+    FTImpl.DLEnd();
+  }
+}
+
 void loop() {
-  // newscreen
-  sTagXY sTagxy;
-  int32_t tagval, tagoption = 0;
-  // for sliders
-  uint32_t TrackRegisterVal = 0;
-  int32_t tmpNewEnergyDensity,
-      tmpNewCurrent = 100;  //, tmpintensity = 100
-  char strNewEnergyDensity[15];
-  // end sliders
-
-  float Float;
-
+  int32_t tagval = 0;
   Screen = 0;  // 5;
   setNextScreen(DisplayScreen::kDisplayScreenHome);
 
   while (1) {
-    FTImpl.TagMask(1);
-    FTImpl.GetTagXY(sTagxy);
-    tagval = sTagxy.tag;
-    FTImpl.ClearColorRGB(64, 64, 64);  // text colour?
-
     if (DisplayScreen::kDisplayScreenHome == currentScreen) {
       homeScreen();
-      tagval = 0;  // TODO remove, avoids below code detecting a press
     } else if (DisplayScreen::kDisplayScreenNewExp == currentScreen) {
       newExpScreen(tagval);
-      tagval = 0;  // TODO remove, avoids below code detecting a press
     } else if (DisplayScreen::kDisplayScreenExpSettings == currentScreen) {
       experimentSettingsScreen();
-      tagval = 0;  // TODO remove
     } else if (DisplayScreen::kDisplayScreenRun == currentScreen) {
       runScreen(tagval);
-      tagval = 0;  // TODO remove
     } else if (DisplayScreen::kDisplayScreenBrowseExperiments ==
                currentScreen) {
       browseExperimentsScreen(tagval);
-      tagval = 0;
     } else if (DisplayScreen::kDisplayScreenShowSavedExp == currentScreen) {
       savedExperimentScreen();
-      tagval = 0;
     } else if (DisplayScreen::OptionsScreen == currentScreen) {
       optionScreen();
-      tagval = 0;
     } else if (DisplayScreen::AboutScreen == currentScreen) {
       aboutScreen();
     } else if (DisplayScreen::SetDateTimeScreen == currentScreen) {
       setDateScreen();
     } else if (DisplayScreen::ExportScreen == currentScreen) {
       exportScreen();
+    } else if (DisplayScreen::ConfigureLedScreen == currentScreen) {
+      configureLedScreen();
     } else {
-      FTImpl.DLStart();
-      if (Screen !=
-          0)  // On all other screen bottom left button is
-              // quit///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-      {
-        // assign tag value 13 to the quit button
-        tagoption =
-            0;  // no touch is default 3d effect and touch is flat effect
-        if (13 == tagval) tagoption = FT_OPT_FLAT;
-        FTImpl.Tag(13);
-        FTImpl.Cmd_Button(63 - 47, 241 - 19, 94, 38, 26, tagoption, "Quit");
-      }
-
- 
-
-      if (Screen ==
-          5)  // Current & power
-              // density///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-      {
-        // assign tag value 14 to the save button
-        tagoption =
-            0;  // no touch is default 3d effect and touch is flat effect
-        if (14 == tagval) tagoption = FT_OPT_FLAT;
-        FTImpl.Tag(14);
-        FTImpl.Cmd_Button(423 - 47, 241 - 19, 94, 38, 26, tagoption, "Save");
-
-        // Slider definition and operation
-        /* Set the tracker for 2 sliders */
-        FTImpl.Cmd_Track(40, 100, 400, 8, 19);
-        FTImpl.Cmd_Track(40, 200, 400, 8, 20);
-
-        tagval = 0;
-        TrackRegisterVal = FTImpl.Read32(REG_TRACKER);
-        tagval = TrackRegisterVal & 0xff;
-        if (0 != tagval) {
-          if (19 == tagval) {
-            NewCurrent = TrackRegisterVal >> 16;  // Value is 0 - 65535
-          }
-          if (20 == tagval) {
-            NewEnergyDensity = TrackRegisterVal >> 16;  // Value is 0 - 65535
-          }
-        }
-
-        // Float = (float)NewCurrent*100/65535;
-        tmpNewCurrent =
-            (float)NewCurrent * 100 / 65535 + 0.5;  // value is 0 - 100%
-        Float = (float)NewEnergyDensity * 300 / 65535 +
-                100;  // Value is 100 - 400 uW/mm2
-        tmpNewEnergyDensity = Float;
-
-        /* Draw slider with 3d effect */
-        FTImpl.ColorRGB(0, 255, 0);
-        if (NC != NewCurrent) FTImpl.ColorRGB(255, 0, 0);
-        // FTImpl.Cmd_FGColor(0x00a000);
-        FTImpl.Cmd_BGColor(0x000000);
-        FTImpl.Tag(19);
-        FTImpl.Cmd_Slider(40, 40, 400, 20, 0, NewCurrent, 65535);
-        FTImpl.ColorRGB(0, 255, 0);
-        if (NED != NewEnergyDensity) FTImpl.ColorRGB(255, 0, 0);
-        FTImpl.Tag(20);
-        FTImpl.Cmd_Slider(40, 100, 400, 20, 0, NewEnergyDensity, 65535);
-
-        FTImpl.TagMask(0);
-        FTImpl.ColorRGB(0xff, 0xff, 0xff);
-        FTImpl.Cmd_Text(60, 20, 26, FT_OPT_CENTER, "Current");
-        // strNewCurrent[0] = '\0';
-        // Dec2Ascii(strNewCurrent,tmpNewCurrent);
-        // strcat(strNewCurrent,"%");
-        sprintf(OutputValue, "%03" PRId32, tmpNewCurrent);
-        OutputValue[3] = '%';
-        OutputValue[4] = '\0';
-        // FTImpl.Cmd_Text(200, 20, 26, FT_OPT_CENTER, strNewCurrent);
-        FTImpl.Cmd_Text(200, 20, 26, FT_OPT_CENTER, OutputValue);
-        FTImpl.Cmd_Text(60, 80, 26, FT_OPT_CENTER, "Energy Density");
-        strNewEnergyDensity[0] = '\0';
-        Dec2Ascii(strNewEnergyDensity, tmpNewEnergyDensity);
-        strcat(strNewEnergyDensity, "uW/mm2");
-        FTImpl.Cmd_Text(200, 80, 26, FT_OPT_CENTER, strNewEnergyDensity);
-        // FTImpl.DLEnd();
-        // FTImpl.Finish();
-        delay(10);
-      }
-
-      if (sd_present) {
-        FTImpl.Cmd_Text(40, FT_DISPLAYHEIGHT / 3, 28, FT_OPT_CENTERY,
-                        "Storage Device not Found");
-      }
-
-      FTImpl.DLEnd();
-    }
-
-    // End of display
-    // plotting/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // Plot requests below here will nt get implemented.
-    if (currentScreen == DisplayScreen::kDisplayScreenNone) {
-      if (tagval == 12)  // Options
-      {
-        Screen = 1;
-      }
-
-      if (tagval == 13)  // quit
-      {
-        setNextScreen(DisplayScreen::kDisplayScreenHome);
-      }
-
-      if (tagval == 14)  // Run / Save.............run option not coded yet
-      {
-        FTImpl.Cmd_DLStart();
-        FTImpl.ClearColorRGB(64, 64, 64);
-        FTImpl.Clear(1, 1, 1);
-        FTImpl.ColorRGB(0xff, 0xff, 0xff);
-        FTImpl.Display();
-        FTImpl.Cmd_Swap();
-        FTImpl.Finish();
-
-        if (Screen == 5)  //=More
-        {
-          Float = (float)NewEnergyDensity / 65535 * 300 + 100;
-          EnergyDensity = Float;
-          EEPROM.put(eeAddress, EnergyDensity);
-          // Float = (float)NewCurrent/65535*100;
-          // Current = Float;
-          Current = tmpNewCurrent;
-          SetCurrent = (0.26 + 0.94 * (float)Current / 100.0) / 5.0 * 255;
-          Serial.print(F("Current set to: "));
-          Serial.println(SetCurrent);
-          FirstPass = true;
-          tagval = 18;
-        } else if (Screen == 4)  //= TIE
-        {
-          Serial.println(F("Run"));
-          Screen = 6;
-        }
-      }
-
-      if (tagval == 15)  // Set date and time
-      {
-        Screen = 2;
-      }
-
-      if (tagval == 17)  // Product info
-      {
-        Screen = 10;
-      }
-
-      if (tagval == 18)  // More
-      {
-        FTImpl.DLStart();
-        FTImpl.ClearColorRGB(64, 64, 64);
-        FTImpl.Clear(1, 1, 1);
-        FTImpl.Cmd_Swap();
-        Float = ((float)EnergyDensity - 100) / 300 * 65535;
-        NewEnergyDensity = Float;
-        NED = NewEnergyDensity;
-        Float = (float)Current / 100 * 65535;
-        NewCurrent = Float;
-        NC = NewCurrent;
-        Screen = 5;
-        if (FirstPass) {
-          FirstPass = false;
-        } else {
-          FirstPass = true;
-          Notepad();
-        }
-      }
+      Serial.println(F("Error unexpected screen"));
+      // TODO display internal error
     }
   }
 }
@@ -2100,33 +2006,14 @@ NotepadResult Notepad(const char *initialText) {
   do {
     if (13 == buttonPressTag)  // quit
     {
-      FTImpl.DLStart();
-      FTImpl.ClearColorRGB(64, 64, 64);
-      FTImpl.Clear(1, 1, 1);
-      FTImpl.Cmd_Swap();
-      setNextScreen(DisplayScreen::kDisplayScreenHome);
       goto Letsgetoutofhere;
     }
 
     if (21 == buttonPressTag && noofchars > 1)  // save
     {
-      FTImpl.DLStart();
-      FTImpl.ClearColorRGB(64, 64, 64);
-      FTImpl.Clear(1, 1, 1);
-      FTImpl.Cmd_Swap();
-      if (DisplayScreen::kDisplayScreenNewExp == currentScreen) {
         // Remove the _ cursor
         Buffer.notepad[Line][noofchars] = '\0';
         return kNotepadResultSave;
-      } else {
-        if ((Buffer.notepad[0][0] == '3') && (Buffer.notepad[0][1] == '3') &&
-            (Buffer.notepad[0][2] == '3') && (Buffer.notepad[0][3] == '3')) {
-          Screen = 5;  // Goto setings screen
-        } else {
-          setNextScreen(DisplayScreen::kDisplayScreenHome);
-        }
-        goto Letsgetoutofhere;
-      }
     }
 
     if (buttonPressTag >=
