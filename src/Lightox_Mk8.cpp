@@ -502,7 +502,7 @@ void homeScreen() {
   } while (currentScreen == DisplayScreen::kDisplayScreenHome);
 }
 
-void newExpScreen(uint16_t currentScreen) {
+void newExpScreen() {
   NotepadResult result = Notepad(currentExp.name);
   if (kNotepadResultSave == result) {
     strncpy(currentExp.name, Buffer.notepad[0],
@@ -844,7 +844,7 @@ void checkAndWaitForLid() {
   }
 }
 
-void runScreen(uint8_t currentTag) {
+void runScreen() {
   showSpinner(nullptr);
 
   Serial.println(SetCurrent);
@@ -1673,11 +1673,11 @@ void loop() {
     if (DisplayScreen::kDisplayScreenHome == currentScreen) {
       homeScreen();
     } else if (DisplayScreen::kDisplayScreenNewExp == currentScreen) {
-      newExpScreen(tagval);
+      newExpScreen();
     } else if (DisplayScreen::kDisplayScreenExpSettings == currentScreen) {
       experimentSettingsScreen();
     } else if (DisplayScreen::kDisplayScreenRun == currentScreen) {
-      runScreen(tagval);
+      runScreen();
     } else if (DisplayScreen::kDisplayScreenBrowseExperiments ==
                currentScreen) {
       browseExperimentsScreen(tagval);
