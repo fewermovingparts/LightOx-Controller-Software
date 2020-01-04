@@ -355,12 +355,11 @@ enum class DisplayScreen {
   ConfigureLedScreen,
   kDisplayScreenNone,
 };
-bool screenJustSelected = true;
-DisplayScreen currentScreen = DisplayScreen::kDisplayScreenNone;  // Home;
+
+DisplayScreen currentScreen = DisplayScreen::kDisplayScreenHome;
 const uint8_t kFont = 26;
 
 static void setNextScreen(DisplayScreen screen) {
-  screenJustSelected = true;
   currentScreen = screen;
 }
 
@@ -1650,37 +1649,43 @@ void configureLedScreen() {
 }
 
 void loop() {
-  Screen = 0;
-  setNextScreen(DisplayScreen::kDisplayScreenHome);
-
-  while (1) {
-    if (DisplayScreen::kDisplayScreenHome == currentScreen) {
+  switch(currentScreen) {
+    case DisplayScreen::kDisplayScreenHome:
       homeScreen();
-    } else if (DisplayScreen::kDisplayScreenNewExp == currentScreen) {
+      break;
+    case DisplayScreen::kDisplayScreenNewExp:
       newExpScreen();
-    } else if (DisplayScreen::kDisplayScreenExpSettings == currentScreen) {
+      break;
+    case DisplayScreen::kDisplayScreenExpSettings:
       experimentSettingsScreen();
-    } else if (DisplayScreen::kDisplayScreenRun == currentScreen) {
+      break;
+    case DisplayScreen::kDisplayScreenRun:
       runScreen();
-    } else if (DisplayScreen::kDisplayScreenBrowseExperiments ==
-               currentScreen) {
+      break;
+    case DisplayScreen::kDisplayScreenBrowseExperiments:
       browseExperimentsScreen();
-    } else if (DisplayScreen::kDisplayScreenShowSavedExp == currentScreen) {
+      break;
+    case DisplayScreen::kDisplayScreenShowSavedExp:
       savedExperimentScreen();
-    } else if (DisplayScreen::OptionsScreen == currentScreen) {
+      break;
+    case DisplayScreen::OptionsScreen:
       optionScreen();
-    } else if (DisplayScreen::AboutScreen == currentScreen) {
+      break;
+    case DisplayScreen::AboutScreen:
       aboutScreen();
-    } else if (DisplayScreen::SetDateTimeScreen == currentScreen) {
+      break;
+    case DisplayScreen::SetDateTimeScreen:
       setDateScreen();
-    } else if (DisplayScreen::ExportScreen == currentScreen) {
+      break;
+    case DisplayScreen::ExportScreen:
       exportScreen();
-    } else if (DisplayScreen::ConfigureLedScreen == currentScreen) {
+      break;
+    case DisplayScreen::ConfigureLedScreen:
       configureLedScreen();
-    } else {
+      break;
+    default:
       Serial.println(F("Error unexpected screen"));
       // TODO display internal error
-    }
   }
 }
 
