@@ -91,19 +91,10 @@ char imagename[11][12] = {"Lightox.jpg", "Run.jpg", "Run.jpg", "Run.jpg",
                           "Run.jpg",     "Run.jpg", "Run.jpg", "Sam.jpg",
                           "Carrie.jpg",  "Run.jpg", "Run.jpg"};
 int Screen = 0;  // Screen =   0             1          2            3 4 5 6
-// char imagename[7][12] =
-// {"Lightox.jpg","Menu.jpg","Date.jpg","Project.jpg","TIE.jpg","Sam.jpg","Carrie.jpg"};
-boolean RecordOn = true;
-int32_t Current = 100, NewCurrent, NC;  // Current in %
-float SetCurrent = 1.2 / 5.0 * 255;     // SetCurrent in 0-5V converted to 0-255
-int ds, it;
 
-char tempPrintValA[3], tempPrintValB[3];
-char tempPrint[15] = {'t', 'e', 'm', 'p', ' ', '=', ' ',
-                      '0', '0', '0', '.', '0', '\0'};
-char OutputValue[5];
-// int TimeStepUp = 1, TimeStepUpCount = 0, TimeStepDown = 1, TimeStepDownCount
-// = 0;
+int32_t Current = 100;  // Current in %
+float SetCurrent = 1.2 / 5.0 * 255;     // SetCurrent in 0-5V converted to 0-255
+
 char TimeDateString[18];
 int TimeAndDate[7];
 int TimePointer[] = {4, 5, 6, 2, 1, 0};
@@ -125,19 +116,14 @@ char LogFileName[20] = {'/', 'L', 'O', 'G', 'S', '/', 'L', 'O', 'G',
                         '0', '0', '0', '0', '0', '.', 'C', 'S', 'V'};
 int LogRef = 0, LineCount = 0;
 char LineCountString[5];
-int ProjectDigit = 9;
 int line = 0;
-int key = 0;
-char Letter;
 uint8_t DallasAddress[8];
-int32_t EnergyDensity, NewEnergyDensity,
-    NED;  // value stored in EEPROM from callibration in mW/mm^2
+int32_t EnergyDensity;  // value stored in EEPROM from callibration in mW/mm^2
 int eeAddress = 0;
 const int kCalibrationAddress = 10;
 constexpr byte kCalibrationMagicByte = kRotateScreen ? 0x55 : 0xAA;
 const int kCalibrationNumBytes = 24;
 bool needsCalibration = true;
-bool FirstPass = false;
 
 const int32_t kDefaultIrradience = 50;
 const int32_t kDefaultTime = 5 * 60;
@@ -451,7 +437,6 @@ void homeScreen() {
   // Reset some global state
   browseExperimentsStartExpIdx = -1;
 
-  DisplayScreen nextScreen = DisplayScreen::kDisplayScreenHome;
   KeyPressTracker kpt(&FTImpl);
   uint8_t selectedTag = 0;
   do {
@@ -1000,9 +985,9 @@ void runScreen() {
       FTImpl.Cmd_Text(FT_DISPLAYWIDTH - leftColumnStart, rowPos, settingsFont, FT_OPT_RIGHTX,
                       labelBuffer);
 
-      //      sprintf(OutputValue, "%03" PRId32, Current);s
+      //      sprintf(labelBuffer, "%03" PRId32, Current);s
       //      FTImpl.Cmd_Text(300, 150, 28, FT_OPT_CENTERX, "Current (%):");
-      //      FTImpl.Cmd_Text(450, 150, 28, FT_OPT_RIGHTX, OutputValue);
+      //      FTImpl.Cmd_Text(450, 150, 28, FT_OPT_RIGHTX, labelBuffer);
 
       rowPos += 30;
       sprintf(labelBuffer, "%" PRId32 " mJ/mm", currentExp.energy);
@@ -1064,7 +1049,7 @@ static String getWidthLimitedExpName(const char *name, int16_t width,
 
 // Needs topDisplayedExperiment global to return to correct point in the
 // experiments list from review prev experiment page
-void browseExperimentsScreen(uint8_t ignore) {
+void browseExperimentsScreen() {
   Serial.println(F("TRACE: browseExperiments Screen"));
 
   const int experimentsPerScreen = 7;
@@ -1665,8 +1650,7 @@ void configureLedScreen() {
 }
 
 void loop() {
-  int32_t tagval = 0;
-  Screen = 0;  // 5;
+  Screen = 0;
   setNextScreen(DisplayScreen::kDisplayScreenHome);
 
   while (1) {
@@ -1680,7 +1664,7 @@ void loop() {
       runScreen();
     } else if (DisplayScreen::kDisplayScreenBrowseExperiments ==
                currentScreen) {
-      browseExperimentsScreen(tagval);
+      browseExperimentsScreen();
     } else if (DisplayScreen::kDisplayScreenShowSavedExp == currentScreen) {
       savedExperimentScreen();
     } else if (DisplayScreen::OptionsScreen == currentScreen) {
