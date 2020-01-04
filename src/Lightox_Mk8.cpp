@@ -365,6 +365,7 @@ enum class DisplayScreen {
   OptionsScreen,
   AboutScreen,
   SetDateTimeScreen,
+  ExportScreen,
   kDisplayScreenNone,
 };
 bool screenJustSelected = true;
@@ -1299,7 +1300,7 @@ void optionScreen() {
         done = true;
         break;
       case kExportLogsButtonTag:
-        Screen = 9;
+        setNextScreen(DisplayScreen::ExportScreen);
         done = true;
         break;
       case kSettingsButtonTag:
@@ -1620,6 +1621,8 @@ void loop() {
       aboutScreen();
     } else if (DisplayScreen::SetDateTimeScreen == currentScreen) {
       setDateScreen();
+    } else if (DisplayScreen::ExportScreen == currentScreen) {
+      exportScreen();
     } else {
       FTImpl.DLStart();
       if (Screen !=
