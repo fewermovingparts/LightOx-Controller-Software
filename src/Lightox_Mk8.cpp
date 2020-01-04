@@ -342,21 +342,21 @@ enum HeldSlider { kHeldSliderTime, kHeldSliderIrradience, kHeldSliderEnergy };
 static HeldSlider heldSlider = kHeldSliderIrradience;
 
 enum class DisplayScreen {
-  kDisplayScreenHome = 0,
-  kDisplayScreenNewExp,
-  kDisplayScreenBrowseExperiments,
-  kDisplayScreenShowSavedExp,
-  kDisplayScreenExpSettings,
-  kDisplayScreenRun,
+  Home = 0,
+  NewExp,
+  BrowseExperiments,
+  ShowSavedExp,
+  ExpSettings,
+  Run,
   OptionsScreen,
   AboutScreen,
   SetDateTimeScreen,
   ExportScreen,
   ConfigureLedScreen,
-  kDisplayScreenNone,
+  None,
 };
 
-DisplayScreen currentScreen = DisplayScreen::kDisplayScreenHome;
+DisplayScreen currentScreen = DisplayScreen::Home;
 const uint8_t kFont = 26;
 
 static void setNextScreen(DisplayScreen screen) {
@@ -471,19 +471,19 @@ void homeScreen() {
 
     switch (buttonPressTag) {
       case kNewExperimentTag:
-        setNextScreen(DisplayScreen::kDisplayScreenNewExp);
+        setNextScreen(DisplayScreen::NewExp);
         strcpy(currentExp.name, ProjectString);
         currentExp.irradience = kDefaultIrradience;
         currentExp.time = kDefaultTime;
         currentExp.energy = kDefaultTime * kDefaultIrradience;
         break;
       case kPrevExperimentTag:
-        setNextScreen(DisplayScreen::kDisplayScreenBrowseExperiments);
+        setNextScreen(DisplayScreen::BrowseExperiments);
         break;
       case kOptionsButtonTag:
         setNextScreen(DisplayScreen::OptionsScreen);
     }
-  } while (currentScreen == DisplayScreen::kDisplayScreenHome);
+  } while (currentScreen == DisplayScreen::Home);
 }
 
 void newExpScreen() {
@@ -492,9 +492,9 @@ void newExpScreen() {
     strncpy(currentExp.name, Buffer.notepad[0],
             min(sizeof(currentExp.name), sizeof(Buffer.notepad[0])));
     currentExp.name[sizeof(currentExp.name) - 1] = '\0';
-    setNextScreen(DisplayScreen::kDisplayScreenExpSettings);
+    setNextScreen(DisplayScreen::ExpSettings);
   } else {
-    setNextScreen(DisplayScreen::kDisplayScreenHome);
+    setNextScreen(DisplayScreen::Home);
   }
 }
 
@@ -535,7 +535,7 @@ void experimentSettingsScreen() {
   int32_t &irradience = currentExp.irradience;
   int32_t &energy = currentExp.energy;
 
-  while (DisplayScreen::kDisplayScreenExpSettings == currentScreen) {
+  while (DisplayScreen::ExpSettings == currentScreen) {
     FTImpl.Cmd_DLStart();
     FTImpl.ClearColorRGB(255, 255, 255);
     FTImpl.Clear(1, 1, 1);
@@ -685,10 +685,10 @@ void experimentSettingsScreen() {
       case kRunTag:
         ReadTimeDate(currentExp.datetime);
         saveCurrentExp();
-        setNextScreen(DisplayScreen::kDisplayScreenRun);
+        setNextScreen(DisplayScreen::Run);
         break;
       case kBackTag:
-        setNextScreen(DisplayScreen::kDisplayScreenNewExp);
+        setNextScreen(DisplayScreen::NewExp);
         break;
       default:
         break;
@@ -1018,7 +1018,7 @@ void runScreen() {
   LogFile2.println(ConvertTimeDate(TimeAndDate));
   Serial.println(ConvertTimeDate(TimeAndDate));
   LogFile2.close();
-  setNextScreen(DisplayScreen::kDisplayScreenHome);
+  setNextScreen(DisplayScreen::Home);
 }
 
 // Font is 26;
@@ -1164,7 +1164,7 @@ void browseExperimentsScreen() {
 #endif
 
     if (kBackButtonTag == buttonPressTag) {
-      setNextScreen(DisplayScreen::kDisplayScreenHome);
+      setNextScreen(DisplayScreen::Home);
       break;
     } else if (kNextPageTag == buttonPressTag) {
       if (topDisplayedExperiment - experimentsPerScreen > 0) {
@@ -1176,8 +1176,8 @@ void browseExperimentsScreen() {
         topDisplayedExperiment += experimentsPerScreen;
       }
     } else if (0 < buttonPressTag && buttonPressTag <= experimentsToDisplay) {
-      Serial.println(F("Setting next screen kDisplayScreenShowSavedExp"));
-      setNextScreen(DisplayScreen::kDisplayScreenShowSavedExp);
+      Serial.println(F("Setting next screen ShowSavedExp"));
+      setNextScreen(DisplayScreen::ShowSavedExp);
       const uint8_t selectedExp = buttonPressTag - 1;
       strcpy(currentExp.name, browseExperiments[selectedExp].name);
       for (int i = 0; i < 7; ++i) {
@@ -1236,15 +1236,15 @@ void savedExperimentScreen() {
       buttonPressTag = kpt.getButtonPressTag(currentPressedTag);
     } while (buttonPressTag == 0 && currentPressedTag == 0);
     if (kBackButtonTag == buttonPressTag) {
-      setNextScreen(DisplayScreen::kDisplayScreenBrowseExperiments);
+      setNextScreen(DisplayScreen::BrowseExperiments);
     } else if (kModifyButtonTag == buttonPressTag) {
       setNextScreen(
-          DisplayScreen::kDisplayScreenNewExp);  // TODO Need to keep the
+          DisplayScreen::NewExp);  // TODO Need to keep the
                                                  // current experiment settings
                                                  // and pass in the name
     } else if (kRunButtonTag == buttonPressTag) {
       ReadTimeDate(currentExp.datetime);
-      setNextScreen(DisplayScreen::kDisplayScreenRun);
+      setNextScreen(DisplayScreen::Run);
     }
   } while (buttonPressTag == 0);
 }
@@ -1277,7 +1277,7 @@ void optionScreen() {
     const uint8_t buttonPressTag = kpt.waitForChange(currentTag);
     switch (buttonPressTag) {
       case kBackButtonTag:
-        setNextScreen(DisplayScreen::kDisplayScreenHome);
+        setNextScreen(DisplayScreen::Home);
         done = true;
         break;
       case kSetDateButtonTag:
@@ -1439,7 +1439,7 @@ void setDateScreen() {
       SetTimeDate(TimeAndDate[TimePointer[0]], TimeAndDate[TimePointer[1]],
                   TimeAndDate[TimePointer[2]], TimeAndDate[TimePointer[3]],
                   TimeAndDate[TimePointer[4]], TimeAndDate[TimePointer[5]]);
-      setNextScreen(DisplayScreen::kDisplayScreenHome);
+      setNextScreen(DisplayScreen::Home);
       break;
     } else if (kBackButtonTag == buttonPressTag) {
       setNextScreen(DisplayScreen::OptionsScreen);
@@ -1650,22 +1650,22 @@ void configureLedScreen() {
 
 void loop() {
   switch(currentScreen) {
-    case DisplayScreen::kDisplayScreenHome:
+    case DisplayScreen::Home:
       homeScreen();
       break;
-    case DisplayScreen::kDisplayScreenNewExp:
+    case DisplayScreen::NewExp:
       newExpScreen();
       break;
-    case DisplayScreen::kDisplayScreenExpSettings:
+    case DisplayScreen::ExpSettings:
       experimentSettingsScreen();
       break;
-    case DisplayScreen::kDisplayScreenRun:
+    case DisplayScreen::Run:
       runScreen();
       break;
-    case DisplayScreen::kDisplayScreenBrowseExperiments:
+    case DisplayScreen::BrowseExperiments:
       browseExperimentsScreen();
       break;
-    case DisplayScreen::kDisplayScreenShowSavedExp:
+    case DisplayScreen::ShowSavedExp:
       savedExperimentScreen();
       break;
     case DisplayScreen::OptionsScreen:
@@ -2179,7 +2179,7 @@ NotepadResult Notepad(const char *initialText) {
     // assign tag value 21 to the save button
     drawBottomRightButton(
         21,
-        DisplayScreen::kDisplayScreenNewExp == currentScreen ? "Save" : "Enter",
+        DisplayScreen::NewExp == currentScreen ? "Save" : "Enter",
         currentPressedTag);
     // assign tag value 13 to the quit button
     drawBottomLeftButton(13, "Quit", currentPressedTag);
