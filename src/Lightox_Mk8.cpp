@@ -18,9 +18,16 @@
 
 #include "database.h"
 
-#define VERSION "1.0"
+#define VERSION "1.1"
 
 constexpr bool kRotateScreen = true;
+constexpr int32_t kMaxMaxIrradiance = 200;
+constexpr int32_t kMaxUvCalibrationValue = 1000;
+constexpr int32_t kLedWarmupTime = 10000;
+
+constexpr char kExperimentsDbPath[] = "experiments.db";
+constexpr char cumulativeRuntimeFile[] = "runtime.txt";
+constexpr char logoFile[] = "Lightox.jpg";
 
 enum NotepadResult { kNotepadResultQuit, kNotepadResultSave };
 // Buffer for the notepads
@@ -83,47 +90,26 @@ SdFat sd;
 SdFile file;
 
 // USB flash drive host chip on Serial3, pins 15 and 14
-Ch376msc flashDrive(Serial3, 115200);
-
-//                              0           1         2         3        4 5 6
-//                              7         8           9          10
-char imagename[11][12] = {"Lightox.jpg", "Run.jpg", "Run.jpg", "Run.jpg",
-                          "Run.jpg",     "Run.jpg", "Run.jpg", "Sam.jpg",
-                          "Carrie.jpg",  "Run.jpg", "Run.jpg"};
-int Screen = 0;  // Screen =   0             1          2            3 4 5 6
+Ch376msc flashDrive(Serial1, 115200);
 
 int32_t Current = 100;  // Current in %
 float SetCurrent = 1.2 / 5.0 * 255;     // SetCurrent in 0-5V converted to 0-255
+int32_t savedMaxIrradiance = -1; // Loaded from eeprom
+int32_t saveduvCalibrationValue = -1; // Loaded from eeprom
 
-char TimeDateString[18];
 int TimeAndDate[7];
-int TimePointer[] = {4, 5, 6, 2, 1, 0};
-int TimeMax[] = {31, 12, 99, 23, 59, 59};
-int TimeMin[] = {1, 1, 19, 0, 0, 0};
-int TimeDigit = 2;
-char ProjectString[] =
-    "WWWWWWWWWW"
-    "WWWWWWWWWW"
-    "WWWWWWWWWW"
-    "WWWWW67890";
-/*
-char ProjectString[150] = {'P', 'r', 'o', 'j', 'e', 'c', 't', ' ', 'd', 'e',
-                           's', 'c', 'r', 'i', 'p', 't', 'i', 'o', 'n', ' ',
-                           'i', 'n', ' ', 'u', 'p', ' ', 't', 'o', ' ', '4',
-                           '0', ' ', 'c', 'h', 'a', 'r', 's', '\0'};
-                           */
+char ProjectString[] = "Experiment name";
+
 char LogFileName[20] = {'/', 'L', 'O', 'G', 'S', '/', 'L', 'O', 'G',
                         '0', '0', '0', '0', '0', '.', 'C', 'S', 'V'};
-int LogRef = 0, LineCount = 0;
-char LineCountString[5];
-int line = 0;
+int LogRef = 0;
 uint8_t DallasAddress[8];
 int32_t EnergyDensity;  // value stored in EEPROM from callibration in mW/mm^2
-int eeAddress = 0;
+constexpr int eeAddress = 0;
 const int kCalibrationAddress = 10;
 constexpr byte kCalibrationMagicByte = kRotateScreen ? 0x55 : 0xAA;
 const int kCalibrationNumBytes = 24;
-bool needsCalibration = true;
+int32_t cumulativeRuntime = 0;
 
 const int32_t kDefaultIrradience = 50;
 const int32_t kDefaultTime = 5 * 60;
@@ -242,6 +228,61 @@ static void loadCalibration() {
   }
 }
 
+static void loadMaxIrradiance() {
+  // TODO load as part of checksummed eeprom data and error if corrupt
+  EEPROM.get(eeAddress, savedMaxIrradiance);
+  if (savedMaxIrradiance < 1 || savedMaxIrradiance > kMaxMaxIrradiance) {
+    savedMaxIrradiance = kMaxMaxIrradiance;
+  }
+  Serial.print(F("Stored max irradiance = "));
+  Serial.println(savedMaxIrradiance);
+}
+
+static void loadUvCalibration() {
+  // TODO load as part of checksummed eeprom data and error if corrupt
+  EEPROM.get(eeAddress + 4, saveduvCalibrationValue);
+  if (saveduvCalibrationValue < 1 || saveduvCalibrationValue > kMaxUvCalibrationValue) {
+    saveduvCalibrationValue = kMaxUvCalibrationValue;
+  }
+    Serial.print(F("Stored UV calibration: "));
+  Serial.println(saveduvCalibrationValue);
+}
+
+static void saveCumulativeRuntime()
+{
+  if (file.open(cumulativeRuntimeFile, O_WRITE | O_CREAT | O_TRUNC)) {
+    char buffer[14];
+    sprintf(buffer, "%" PRId32 "\r\n", cumulativeRuntime);
+    file.write(buffer);
+    file.close();
+  }
+}
+
+static void sdCardInit() {
+  Serial.print(F("Initializing SD card..."));  //<---is there a clash with FT_SD?
+  if (!sd.begin(FT_SD_CSPIN)) {             // Was SD_CS
+    Serial.println(F("failed!"));
+  }
+  Serial.println(F("OK!"));
+  if (!sd.exists("/LOGS")) {
+    sd.mkdir("/LOGS");
+  }
+
+  char buffer[20];
+  if (sd.exists(cumulativeRuntimeFile))
+  {
+    if (file.open(cumulativeRuntimeFile, O_RDONLY)) {
+      int ret = file.read(buffer, sizeof(buffer) - 1);
+      if (ret > 0) {
+        buffer[ret] = '\0';
+        cumulativeRuntime = strtol(buffer, nullptr, 10);
+      }
+    }
+  }
+  // Will be created when some time is logged so can
+  // leave missing until and experiment is run
+}
+
 void setup(void) {
   pinMode(11, INPUT);  // Uno SPI pins (11, 12 & 13) not used on Mega
   pinMode(12, INPUT);  // but are connected to SPI by wires from 51, 52 & 53 on
@@ -258,7 +299,7 @@ void setup(void) {
   digitalWrite(RTC_5V, HIGH);
   digitalWrite(FAN, LOW);
 
-  Serial.begin(9600);
+  Serial.begin(115200);
   Serial.println(F("Setup...."));
 
   sensors.begin();  // start up the Dallas sensors library
@@ -289,22 +330,14 @@ void setup(void) {
 
   yield();  // from bmp program - what does it do?
 
-  Serial.print(F("Initializing SD card..."));  //<---is there a clash with FT_SD?
-  if (!sd.begin(FT_SD_CSPIN)) {             // Was SD_CS
-    Serial.println(F("failed!"));
-  }
-  Serial.println(F("OK!"));
+  sdCardInit();
 
   Serial.print(F("Initialising flash drive USB host "));
   flashDrive.init();
   Serial.println(flashDrive.pingDevice() ? "OK" : "failed");
 
-  EEPROM.get(eeAddress, EnergyDensity);
-  // EnergyDensity = 188;
-  Serial.print(F("Stored Energy Density = "));
-  Serial.println(EnergyDensity);
-  // Energy =
-  //    (float)Time * (float)EnergyDensity / 1000.0 * (float)Intensity / 100.0;
+  loadMaxIrradiance();
+  loadUvCalibration();
 
   pinMode(ADM, OUTPUT);
   pinMode(PWM, OUTPUT);
@@ -328,7 +361,6 @@ void setup(void) {
     loadCalibration();
   }
 
-  Screen = 0;
   Loadimage2ram();
 
   Serial.println(F("Setup complete....."));
@@ -353,6 +385,7 @@ enum class DisplayScreen {
   SetDateTimeScreen,
   ExportScreen,
   ConfigureLedScreen,
+  ClearLogsScreen,
   None,
 };
 
@@ -430,6 +463,12 @@ void showExpHeader(const char *expName, int TimeDate[7]) {
   FTImpl.RestoreContext();
 }
 
+static void displayStartWhite() {
+  FTImpl.Cmd_DLStart();
+  FTImpl.ClearColorRGB(0xFFFFFF);
+  FTImpl.Clear(1, 1, 1);
+}
+
 void homeScreen() {
   Serial.println(F("TRACE: homeScreen()"));
 
@@ -463,7 +502,8 @@ void homeScreen() {
                      buttonWidth, 30, "Rerun experiment", selectedTag);
 
     const uint8_t kOptionsButtonTag = 13;
-    drawTaggedButton(kOptionsButtonTag, FT_DISPLAYWIDTH - 10 - 20, 10, 20, 20,
+    const int16_t kOptionsButtonMargin = 20;
+    drawTaggedButton(kOptionsButtonTag, FT_DISPLAYWIDTH - kOptionsButtonMargin - 20, kOptionsButtonMargin, 20, 20,
                      "O", selectedTag);
     FTImpl.DLEnd();
 
@@ -515,7 +555,7 @@ void drawSliderOrProgress(int16_t x, int16_t y, uint16_t w, uint16_t h,
 }
 
 void saveCurrentExp() {
-  SavedExperimentsDB db(sd, "experiments.db");
+  SavedExperimentsDB db(sd, kExperimentsDbPath);
   SavedExperiment exp;
   strcpy(exp.name, currentExp.name);
   for (int i = 1; i < 7; ++i) {
@@ -524,6 +564,23 @@ void saveCurrentExp() {
   exp.irradience = currentExp.irradience;
   exp.time = currentExp.time;
   db.addExperiment(exp);
+}
+
+// returns a pointer to a buffer with the formatted irradiance
+// including units but not the ^2 so it can be printed using superscript
+// when space allows
+const char* sprintIrradiance(const int32_t irradiance) {
+  static char buffer[14];
+  const int32_t displayIrradiance = irradiance * savedMaxIrradiance;
+  sprintf_P(buffer, PSTR("%2" PRId32 ".%03" PRId32 " mW/cm"), displayIrradiance / 1000, displayIrradiance % 1000);
+  return buffer;
+}
+
+const char* sprintEnergyDensity(const int32_t energyDensity) {
+  static char buffer[18];
+  const int32_t displayEnergy = energyDensity * savedMaxIrradiance;
+  sprintf_P(buffer, PSTR("%5" PRId32 ".%03" PRId32 " mJ/cm"), displayEnergy / 1000, displayEnergy % 1000);
+  return buffer;
 }
 
 void experimentSettingsScreen() {
@@ -694,8 +751,6 @@ void experimentSettingsScreen() {
         break;
     }
 
-    const float kFullIrrandiencePowerPerArea = 60;
-
     const uint16_t sliderHeight = 15;
 
     // ColorRGB is active part of slider
@@ -751,13 +806,11 @@ void experimentSettingsScreen() {
     FTImpl.Cmd_Text(sliderLeft + sliderWidth / 2 + 20 + kLabelXOffset,
                     topSliderY + kLabelYOffset, kFont, FT_OPT_CENTERY,
                     labelBuffer);
-
-    sprintf(labelBuffer, "Irradiance: %3ld mW/cm^2", irradience);
+    sprintf(labelBuffer, "Irradiance: %s^2", sprintIrradiance(irradience));
     FTImpl.Cmd_Text(sliderLeft + kLabelXOffset,
                     topSliderY + sliderYSpacing + kLabelYOffset, kFont,
                     FT_OPT_CENTERY, labelBuffer);
-
-    sprintf(labelBuffer, "Energy: %7ld mJ/cm^2", energy);
+    sprintf(labelBuffer, "Energy Density: %s^2", sprintEnergyDensity(energy));
     FTImpl.Cmd_Text(sliderLeft + kLabelXOffset,
                     topSliderY + 2 * sliderYSpacing + kLabelYOffset, kFont,
                     FT_OPT_CENTERY, labelBuffer);
@@ -778,32 +831,27 @@ File tryOpenLogfile() {
 
   File logFile = sd.open(LogFileName, FILE_WRITE);
   if (!logFile) {  // Open and ensure file created o.k.
-    Serial.print(F("File error"));
+    Serial.println(F("File error"));
   }
   return logFile;
 }
 
-void startRunLog(File logFile) {
-  // TODO use correct variables and units
-  logFile.println("Deliberately left blank");  // Sometimes lose first
+void startRunLog(File& logFile) {
+  logFile.println("");                         // Sometimes lose first
                                                // line, so make it a dummy.
-  logFile.print("Test ID: ");                  // Record project data
+  logFile.print(F("Test ID: "));               // Record project data
   logFile.println(currentExp.name);
-  logFile.print("Duration (s): ");
-  logFile.print(currentExp.time);
-  logFile.print(", ");
-  logFile.print("Selected Intensity (%): ");
-  logFile.print(currentExp.irradience);
-  logFile.print(", ");
-  logFile.print("Selected Current (%): ");
-  logFile.println(Current);
-  logFile.print("Calculation power density (uW/mm2): ");
-  logFile.println(EnergyDensity);
-  logFile.print("Energy applied (mW/cm2): ");
-  logFile.println(currentExp.energy);
-  logFile.print("Start Date/Time: ");
+  logFile.print(F("Duration (s): "));
+  logFile.println(currentExp.time);
+  logFile.print(F("Irradiance: "));
+  logFile.print(sprintIrradiance(currentExp.irradience));
+  logFile.println("^2");
+  logFile.print("Energy density: ");
+  logFile.print(sprintEnergyDensity(currentExp.energy));
+  logFile.println("^2");
+  logFile.print(F("Start Date/Time: "));
   logFile.println(ConvertTimeDate(TimeAndDate));
-  logFile.println("Time (s), UV (relative), Temperature (Deg C)");
+  logFile.println(F("Time (s), UV (%), Temperature (Deg C)"));
 }
 
 static void showSpinner(const char *message) {
@@ -826,6 +874,13 @@ void checkAndWaitForLid() {
       delay(100);
     } while (digitalRead(LID));
   }
+}
+
+// Returns percentage of calibrated value times 10
+int32_t uvToPercentage(const uint16_t uvValue) {
+  const int32_t uv = static_cast<int32_t>(uvValue);
+  int32_t percentageTimesTen = uv == static_cast<uint16_t>(-1) ? -10 : 100 *(uv * 10 + 5) / saveduvCalibrationValue;
+  return percentageTimesTen;
 }
 
 void runScreen() {
@@ -851,7 +906,7 @@ void runScreen() {
 
   showSpinner("Starting, please wait....");
 
-  delay(1000);  // TODO return to 10000
+  delay(kLedWarmupTime);
   analogWrite(PWM,
               int((float)currentExp.irradience * 2.55));  // LEDs power setting
 
@@ -863,6 +918,7 @@ void runScreen() {
   bool LidOpen = false;
   float Temperature = -127;
   uint16_t uvValue = 0;
+  int32_t uvPercentageTimesTen = uvToPercentage(uvValue);
 
   uint8_t currentPressedTag = 0;
   KeyPressTracker kpt(&FTImpl);
@@ -892,12 +948,15 @@ void runScreen() {
       OldiTime = iTime;
       Serial.print(F("Time = "));
       Serial.print(currentExp.time - iTime);
-      LogFile2.print(iTime);
+      LogFile2.print(currentExp.time - iTime);
       Serial.print(", uv = ");
       LogFile2.print(", ");
       uvValue = uv.readUV();
+      uvPercentageTimesTen = uvToPercentage(uvValue);
       Serial.print(uvValue);
-      LogFile2.print(uvValue);
+      LogFile2.print(uvPercentageTimesTen / 10);
+      LogFile2.print(".");
+      LogFile2.print(uvPercentageTimesTen % 10);
       Serial.print(", t = ");
       LogFile2.print(", ");
       int16_t i = 0;
@@ -941,7 +1000,7 @@ void runScreen() {
       FTImpl.Cmd_Text(FT_DISPLAYWIDTH / 2, 120, 31, FT_OPT_CENTER, "Close Lid");
     } else {
       const uint8_t settingsFont = 27;
-      const uint16_t leftColumnValEnd = 2 * kBorderPixels + 256;
+      const uint16_t leftColumnValEnd = 2 * kBorderPixels + 296;
       const uint16_t leftColumnStart = 2 * kBorderPixels;
 
       char labelBuffer[12] = {'\0'};
@@ -959,7 +1018,7 @@ void runScreen() {
       FTImpl.Cmd_Text(leftColumnValEnd, rowPos, settingsFont, FT_OPT_RIGHTX,
                       labelBuffer);
 
-      FTImpl.Cmd_Text(310, rowPos, settingsFont, 0, "Temp:");
+      FTImpl.Cmd_Text(350, rowPos, settingsFont, 0, "Temp:");
       if (Temperature != -127) {
         sprintf_P(labelBuffer, PSTR("%d.%01d C"), int(Temperature),
                   int(Temperature * 10) % 10);
@@ -970,17 +1029,16 @@ void runScreen() {
                       labelBuffer);
 
       rowPos += 30;
-      sprintf(labelBuffer, "%" PRId32 " mW/mm", currentExp.irradience);
-      FTImpl.Cmd_Text(leftColumnStart, rowPos, settingsFont, 0, "Intensity:");
+      FTImpl.Cmd_Text(leftColumnStart, rowPos, settingsFont, 0, "Irradiance:");
       const uint8_t superscriptCharWidth = Ft_Gpu_Rom_Font_WH('2', 26);
       const uint16_t leftColValEndSS =
           leftColumnValEnd - 1 - superscriptCharWidth;
       FTImpl.Cmd_Text(leftColValEndSS, rowPos, settingsFont, FT_OPT_RIGHTX,
-                      labelBuffer);
+                      sprintIrradiance(currentExp.irradience));
       FTImpl.Cmd_Text(leftColValEndSS + 1, rowPos - 3, 26, 0, "2");
 
-      FTImpl.Cmd_Text(310, rowPos, settingsFont, 0, "UV:");
-      sprintf_P(labelBuffer, PSTR("%d"), uvValue);
+      FTImpl.Cmd_Text(350, rowPos, settingsFont, 0, "UV:");
+      sprintf_P(labelBuffer, PSTR("%" PRId32 ".%01" PRId32 " %%"), uvPercentageTimesTen / 10, uvPercentageTimesTen % 10);
       FTImpl.Cmd_Text(FT_DISPLAYWIDTH - leftColumnStart, rowPos, settingsFont, FT_OPT_RIGHTX,
                       labelBuffer);
 
@@ -989,10 +1047,9 @@ void runScreen() {
       //      FTImpl.Cmd_Text(450, 150, 28, FT_OPT_RIGHTX, labelBuffer);
 
       rowPos += 30;
-      sprintf(labelBuffer, "%" PRId32 " mJ/mm", currentExp.energy);
       FTImpl.Cmd_Text(leftColumnStart, rowPos, settingsFont, 0, "Energy density:");
       FTImpl.Cmd_Text(leftColValEndSS, rowPos, settingsFont, FT_OPT_RIGHTX,
-                      labelBuffer);
+                      sprintEnergyDensity(currentExp.energy));
       FTImpl.Cmd_Text(leftColValEndSS + 1, rowPos - 3, 26, 0, "2");
     }
     FTImpl.Display();
@@ -1017,7 +1074,14 @@ void runScreen() {
   ReadTimeDate(TimeAndDate);
   LogFile2.println(ConvertTimeDate(TimeAndDate));
   Serial.println(ConvertTimeDate(TimeAndDate));
+
+  cumulativeRuntime += currentExp.time - iTime;
+  LogFile2.print(F("Cumulative runtime (s): "));
+  LogFile2.println(cumulativeRuntime);
   LogFile2.close();
+  Serial.print(F("Cumulative runtime (s): "));
+  Serial.println(cumulativeRuntime);
+  saveCumulativeRuntime();
   setNextScreen(DisplayScreen::Home);
 }
 
@@ -1046,17 +1110,9 @@ static String getWidthLimitedExpName(const char *name, int16_t width,
   return str;
 }
 
-// Needs topDisplayedExperiment global to return to correct point in the
-// experiments list from review prev experiment page
-void browseExperimentsScreen() {
-  Serial.println(F("TRACE: browseExperiments Screen"));
-
-  const int experimentsPerScreen = 7;
-  SavedExperiment browseExperiments[experimentsPerScreen];
-  int16_t browseExperimentsIdx[experimentsPerScreen];
-  SavedExperimentsDB db(sd, "experiments.db");
-
-  // db.clear();
+#ifdef DEBUG_DATABASE
+static void populateDatabaseTestData(SavedExperimentsDB& db)
+{
   if (db.count() < 102) {
     for (int i = db.count(); i <= 102; ++i) {
       SavedExperiment s;
@@ -1078,6 +1134,21 @@ void browseExperimentsScreen() {
       db.addExperiment(s);
     }
   }
+}
+#endif
+
+// Needs topDisplayedExperiment global to return to correct point in the
+// experiments list from review prev experiment page
+void browseExperimentsScreen() {
+  Serial.println(F("TRACE: browseExperiments Screen"));
+
+  const int experimentsPerScreen = 7;
+  SavedExperiment browseExperiments[experimentsPerScreen];
+  SavedExperimentsDB db(sd, kExperimentsDbPath);
+
+#ifdef DEBUG_DATABASE
+  populateDatabaseTestData(db);
+#endif
 
   int16_t numSavedExperiments = db.count();
   int16_t topDisplayedExperiment = browseExperimentsStartExpIdx < 1
@@ -1096,7 +1167,6 @@ void browseExperimentsScreen() {
         int expDisplayIdx = experimentsToDisplay - 1 - i;
         int16_t expIdx = topDisplayedExperiment - experimentsToDisplay + i + 1;
         db.getExperiment(expIdx, browseExperiments[expDisplayIdx]);
-        browseExperimentsIdx[expDisplayIdx] = expIdx;
       }
       Serial.print(F("Loaded experiments "));
       Serial.println(millis());
@@ -1214,12 +1284,12 @@ void savedExperimentScreen() {
     sprintf(labelBuffer, "%" PRId32 ":%02" PRId32, currentExp.time / 60,
             currentExp.time % 60);
     FTImpl.Cmd_Text(kRightColumnX, 60, kFont, 0, labelBuffer);
-    FTImpl.Cmd_Text(kLeftColumnX, 60 + kSpacing, kFont, 0, "Irradience:");
-    sprintf(labelBuffer, "%ld %%", currentExp.irradience);
+    FTImpl.Cmd_Text(kLeftColumnX, 60 + kSpacing, kFont, 0, "Irradiance:");
+    sprintf(labelBuffer, "%s^2", sprintEnergyDensity(currentExp.irradience));
     FTImpl.Cmd_Text(kRightColumnX, 60 + kSpacing, kFont, 0, labelBuffer);
     FTImpl.Cmd_Text(kLeftColumnX, 60 + 2 * kSpacing, kFont, 0,
                     "Energy Density:");
-    sprintf(labelBuffer, "%ld mJ/mm2", currentExp.energy);
+    sprintf(labelBuffer, "%s^2", sprintEnergyDensity(currentExp.energy));
     FTImpl.Cmd_Text(kRightColumnX, 60 + 2 * kSpacing, kFont, 0, labelBuffer);
 
     const uint8_t kBackButtonTag = 10;
@@ -1249,12 +1319,86 @@ void savedExperimentScreen() {
   } while (buttonPressTag == 0);
 }
 
+static bool clearLogs()
+{
+  {
+    SavedExperimentsDB db(sd, kExperimentsDbPath);
+    db.clear();
+  }
+
+  SdFile dir;
+  bool success = dir.open("/LOGS");
+  if (success) {
+    bool success = dir.rmRfStar();
+    if (success) {
+      success = sd.mkdir("/LOGS");
+    } else {
+      Serial.println(F("Error: Could not clear logs directory"));
+    }
+  } else {
+    Serial.println(F("Error: Could not open logs directory"));
+  }
+  return success;
+}
+
+static void clearLogsScreen()
+{
+  uint8_t currentTag = 0;
+  KeyPressTracker kpt(&FTImpl);
+  bool clearConfirmed = false;
+  bool done = false;
+  while (true) {
+    displayStartWhite();
+    showExpHeader("Clear all logs", nullptr);
+    FTImpl.ColorRGB(0);
+    if (!clearConfirmed) {
+      FTImpl.Cmd_Text(230, 110, 29, FT_OPT_CENTER, "Are you sure?");
+    } else if (!done) {
+      FTImpl.Cmd_Text(230, 110, 29, FT_OPT_CENTER, "Clearing logs");
+    } else {
+      FTImpl.Cmd_Text(FT_DISPLAY_HSIZE / 2, 110, 29, FT_OPT_CENTER, "Logs cleared");
+    }
+    FTImpl.TagMask(1);
+    constexpr uint8_t kBackButtonTag = 1;
+    constexpr uint8_t kClearButtonTag = 2;
+    FTImpl.ColorRGB(0xFFFFFF);
+    if (!clearConfirmed || done)
+      drawBottomLeftButton(kBackButtonTag, "Back", currentTag);
+    if (!clearConfirmed)
+      drawBottomRightButton(kClearButtonTag, "Clear logs", currentTag);
+
+    if (clearConfirmed && !done) {
+      FTImpl.Cmd_Spinner(FT_DISPLAY_HSIZE / 2, 160, 0, 0);
+      clearLogs();
+      done = true;
+    } else {
+      FTImpl.DLEnd();
+      const uint8_t buttonPressTag = kpt.waitForChange(currentTag);
+      if (kBackButtonTag == buttonPressTag) {
+        setNextScreen(DisplayScreen::OptionsScreen);
+        break;
+      } else if (kClearButtonTag == buttonPressTag) {
+        clearConfirmed = true;
+      }
+    }
+  };
+}
+
+static void drawOptionButton(const uint8_t tag, const uint8_t number, const char *label, const uint8_t currentPressedTag)
+{
+  constexpr uint16_t kButtonHeight = 33;
+  const int16_t buttonY = kBorderPixels + number * (kButtonHeight + kBorderPixels);
+  drawTaggedButton(tag, kBorderPixels, buttonY, FT_DISPLAY_HSIZE - 2 * kBorderPixels, kButtonHeight,
+                     label, currentPressedTag);
+}
+
 void optionScreen() {
   constexpr uint8_t kBackButtonTag = 13;
   constexpr uint8_t kSetDateButtonTag = 15;
   constexpr uint8_t kExportLogsButtonTag = 16;
   constexpr uint8_t kSettingsButtonTag = 17;
   constexpr uint8_t kAboutButtonTag = 18;
+  constexpr uint8_t kClearLogsButtonTag = 19;
 
   uint8_t currentTag = 0;
   KeyPressTracker kpt(&FTImpl);
@@ -1265,13 +1409,12 @@ void optionScreen() {
     FTImpl.Clear(1, 1, 1);
     FTImpl.TagMask(1);
     drawBottomLeftButton(kBackButtonTag, "Back", currentTag);
-    drawTaggedButton(kSetDateButtonTag, 17, 54, 431, 33, "Set date and time",
-                     currentTag);
-    drawTaggedButton(kExportLogsButtonTag, 17, 10, 431, 33,
-                     "Copy logs to flash drive", currentTag);
-    drawTaggedButton(kSettingsButtonTag, 17, 98, 431, 33,
-                     "Settings (Administrator password required)", currentTag);
-    drawTaggedButton(kAboutButtonTag, 17, 142, 431, 33, "About", currentTag);
+
+    drawOptionButton(kExportLogsButtonTag, 0, "Copy logs to flash drive", currentTag);
+    drawOptionButton(kClearLogsButtonTag, 1, "Clear all logs", currentTag);
+    drawOptionButton(kSetDateButtonTag, 2, "Set date and time", currentTag);
+    drawOptionButton(kSettingsButtonTag, 3, "Settings (Administrator password required)", currentTag);
+    drawOptionButton(kAboutButtonTag, 4, "About", currentTag);
     FTImpl.DLEnd();
 
     const uint8_t buttonPressTag = kpt.waitForChange(currentTag);
@@ -1296,14 +1439,11 @@ void optionScreen() {
         setNextScreen(DisplayScreen::AboutScreen);
         done = true;
         break;
+      case kClearLogsButtonTag:
+        setNextScreen(DisplayScreen::ClearLogsScreen);
+        done = true;
     }
   } while (!done);
-}
-
-static void displayStartWhite() {
-  FTImpl.Cmd_DLStart();
-  FTImpl.ClearColorRGB(0xFFFFFF);
-  FTImpl.Clear(1, 1, 1);
 }
 
 static void aboutScreen() {
@@ -1332,6 +1472,10 @@ static void aboutScreen() {
 }
 
 void setDateScreen() {
+  constexpr int TimePointer[] = {4, 5, 6, 2, 1, 0};
+  constexpr int TimeMax[] = {31, 12, 99, 23, 59, 59};
+  constexpr int TimeMin[] = {1, 1, 19, 0, 0, 0};
+
   ReadTimeDate(TimeAndDate);
 
   constexpr uint8_t kBackButtonTag = 13;
@@ -1423,13 +1567,13 @@ void setDateScreen() {
     const uint8_t buttonPressTag = kpt.getButtonPressTag(currentPressedTag);
 
     if (currentPressedTag == kUpTag) {
-      TimeDigit = selectedDateTimeTag - 25;
+      const uint8_t TimeDigit = selectedDateTimeTag - 25;
       TimeAndDate[TimePointer[TimeDigit]] += 1;
       if (TimeAndDate[TimePointer[TimeDigit]] > TimeMax[TimeDigit])
         TimeAndDate[TimePointer[TimeDigit]] = TimeMin[TimeDigit];
       delay(200);
     } else if(currentPressedTag == kDownTag) {
-      TimeDigit = selectedDateTimeTag - 25;
+      const uint8_t TimeDigit = selectedDateTimeTag - 25;
       TimeAndDate[TimePointer[TimeDigit]] -= 1;
       if (TimeAndDate[TimePointer[TimeDigit]] < TimeMin[TimeDigit])
         TimeAndDate[TimePointer[TimeDigit]] = TimeMax[TimeDigit];
@@ -1557,16 +1701,12 @@ void exportScreen() {
   }
 
   showExportResult(logCopyCount);
+  setNextScreen(DisplayScreen::OptionsScreen);
 }
 
-int32_t savedCurrentPercent = 100;
-int32_t savedPowerDensityMicroWatts = 230;
-
 void configureLedScreen() {
-  int32_t powerDensity = savedPowerDensityMicroWatts;
-  int32_t currentPercent = savedCurrentPercent;
-  constexpr int32_t kMaxPowerDensity = 300;
-  constexpr int32_t kMaxCurrentPercent = 100;
+  int32_t maxIrradiance = savedMaxIrradiance;
+  int32_t uvCalibrationValue = saveduvCalibrationValue;
 
   NotepadResult notepadResult = Notepad();
   Serial.print("buffer ");
@@ -1581,40 +1721,40 @@ void configureLedScreen() {
   while (true) {
     constexpr uint8_t kSaveButtonTag = 14;
     constexpr uint8_t kBackButtonTag = 15;
-    constexpr uint8_t kCurrentSliderTag = 19;
-    constexpr uint8_t kPowerDensitySliderTag = 20;
-    drawBottomRightButton(kSaveButtonTag, "Save", currentPressedTag);
-    drawBottomLeftButton(kBackButtonTag, "Cancel", currentPressedTag);
+    constexpr uint8_t kUvSliderTag = 19;
+    constexpr uint8_t kUvHundredsSliderTag = 21;
+    constexpr uint8_t kMaxIrrandianceSliderTag = 20;
 
-    // Slider definition and operation
-    /* Set the tracker for 2 sliders */
-    FTImpl.Cmd_Track(40, 100, 400, 8, kCurrentSliderTag);
-    FTImpl.Cmd_Track(40, 200, 400, 8, kPowerDensitySliderTag);
+    FTImpl.Cmd_Track(40, 90, 60, 8, kUvHundredsSliderTag);
+    FTImpl.Cmd_Track(160, 90, 280, 8, kUvSliderTag);
+    FTImpl.Cmd_Track(40, 150, 400, 8, kMaxIrrandianceSliderTag);
 
     const uint8_t buttonPressTag = kpt.getButtonPressTag(currentPressedTag);
     const uint32_t TrackRegisterVal = FTImpl.Read32(REG_TRACKER);
     const uint8_t currentSliderTag = TrackRegisterVal & 0xff;
     const int32_t sliderTrackerVal = TrackRegisterVal >> 16;
 
-    if (kCurrentSliderTag == currentSliderTag) {
-      currentPercent = (kMaxCurrentPercent * sliderTrackerVal) / 65535;
-      currentPercent = max(1, currentPercent);
-    } else if (kPowerDensitySliderTag == currentSliderTag) {
-      powerDensity = (kMaxPowerDensity * sliderTrackerVal) / 65535;
-      // Clip to the nearest 10 microWatts
-      powerDensity = (powerDensity / 10) * 10;
+    if (kUvSliderTag == currentSliderTag) {
+      uvCalibrationValue = (uvCalibrationValue / 100) * 100 + (99 * sliderTrackerVal) / 65535;
+      uvCalibrationValue = min(max(1, uvCalibrationValue), kMaxUvCalibrationValue);
+    } else if (kUvHundredsSliderTag == currentSliderTag) {
+      uvCalibrationValue = uvCalibrationValue % 100 + 100* ((10 * sliderTrackerVal) / 65535);
+      uvCalibrationValue = min(max(1, uvCalibrationValue), kMaxUvCalibrationValue);
+    } else if (kMaxIrrandianceSliderTag == currentSliderTag) {
+      maxIrradiance = (kMaxMaxIrradiance * sliderTrackerVal) / 65535;
     }
 
     if (kSaveButtonTag == buttonPressTag) {
       //when save is pressed:
-      savedPowerDensityMicroWatts = powerDensity;
-      savedCurrentPercent = currentPercent;
+      savedMaxIrradiance = maxIrradiance;
+      saveduvCalibrationValue = uvCalibrationValue;
 
-      EEPROM.put(eeAddress, savedPowerDensityMicroWatts);
+      EEPROM.put(eeAddress, savedMaxIrradiance);
+      EEPROM.put(eeAddress + 4, saveduvCalibrationValue);
       // TODO save current percentage to eeprom
-      //SetCurrent = (0.26 + 0.94 * (float)savedCurrentPercent / 100.0) / 5.0 * 255;
-      Serial.print(F("Current set to: "));
-      Serial.println(savedCurrentPercent);
+      //SetCurrent = (0.26 + 0.94 * (float)saveduvCalibrationValue / 100.0) / 5.0 * 255;
+      Serial.print(F("UV calibration set to: "));
+      Serial.println(saveduvCalibrationValue);
       setNextScreen(DisplayScreen::OptionsScreen);
       break;
     } else if (kBackButtonTag == buttonPressTag) {
@@ -1623,26 +1763,32 @@ void configureLedScreen() {
     }
 
     displayStartWhite();
+    showExpHeader("LED Calibration values", nullptr);
+    drawBottomRightButton(kSaveButtonTag, "Save", currentPressedTag);
+    drawBottomLeftButton(kBackButtonTag, "Cancel", currentPressedTag);
+
     FTImpl.ColorRGB(kColourSeconday);
-    if (savedCurrentPercent != currentPercent) FTImpl.ColorRGB(255, 0, 0);
+    if (saveduvCalibrationValue != uvCalibrationValue) FTImpl.ColorRGB(255, 0, 0);
     FTImpl.Cmd_FGColor(kColourPrimary);
     FTImpl.Cmd_BGColor(kColourLight);
-    FTImpl.Tag(kCurrentSliderTag);
-    FTImpl.Cmd_Slider(40, 40, 400, 20, 0, currentPercent, kMaxCurrentPercent);
+    FTImpl.Tag(kUvHundredsSliderTag);
+    FTImpl.Cmd_Slider(40, 90, 60, 20, 0, uvCalibrationValue / 100, 10);
+    FTImpl.Tag(kUvSliderTag);
+    FTImpl.Cmd_Slider(160, 90, 280, 20, 0, uvCalibrationValue % 100, 99);
     FTImpl.ColorRGB(kColourSeconday);
-    if (savedPowerDensityMicroWatts != powerDensity) FTImpl.ColorRGB(255, 0, 0);
-    FTImpl.Tag(kPowerDensitySliderTag);
-    FTImpl.Cmd_Slider(40, 100, 400, 20, 0, powerDensity, kMaxPowerDensity);
+    if (savedMaxIrradiance != maxIrradiance) FTImpl.ColorRGB(255, 0, 0);
+    FTImpl.Tag(kMaxIrrandianceSliderTag);
+    FTImpl.Cmd_Slider(40, 170, 400, 20, 0, maxIrradiance, kMaxMaxIrradiance);
 
     FTImpl.TagMask(0);
     FTImpl.ColorRGB(0);
 
     char labelBuffer[30];
-    sprintf_P(labelBuffer, PSTR("Current: %" PRId32 " %%"), currentPercent);
-    FTImpl.Cmd_Text(60, 20, 26, FT_OPT_CENTERY, labelBuffer);
+    sprintf_P(labelBuffer, PSTR("UV Calibration: %" PRId32), uvCalibrationValue);
+    FTImpl.Cmd_Text(40, 70, 26, FT_OPT_CENTERY, labelBuffer);
 
-    sprintf_P(labelBuffer, PSTR("Power Density: 0.%03" PRId32 " mW/mm2"), powerDensity);
-    FTImpl.Cmd_Text(60, 80, 26, FT_OPT_CENTERY, labelBuffer);
+    sprintf_P(labelBuffer, PSTR("Max Irradiance: %2" PRId32 ".%01" PRId32 " mW/cm2"), maxIrradiance / 10, maxIrradiance % 10);
+    FTImpl.Cmd_Text(40, 150, 26, FT_OPT_CENTERY, labelBuffer);
 
     FTImpl.DLEnd();
   }
@@ -1682,6 +1828,9 @@ void loop() {
       break;
     case DisplayScreen::ConfigureLedScreen:
       configureLedScreen();
+      break;
+    case DisplayScreen::ClearLogsScreen:
+      clearLogsScreen();
       break;
     default:
       Serial.println(F("Error unexpected screen"));
@@ -1775,12 +1924,12 @@ void Load_Jpeg(
 }
 
 void Loadimage2ram() {
-  if (FT_SD_OK == FtSd.OpenFile(Imagefile, imagename[Screen])) {
+  if (FT_SD_OK == FtSd.OpenFile(Imagefile, logoFile)) {
     FTImpl.Cmd_LoadImage(FT_RAM_G, FT_OPT_NODL);
     Load_Jpeg(Imagefile);
   } else {
     Serial.print(F("Failed to load image: "));
-    Serial.println(imagename[Screen]);
+    Serial.println(logoFile);
   }
 }
 
