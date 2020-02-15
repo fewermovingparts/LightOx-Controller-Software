@@ -89,7 +89,7 @@ SdFat sd;
 // Log file.
 SdFile file;
 
-// USB flash drive host chip on Serial3, pins 15 and 14
+// USB flash drive host chip on Serial3, pins 15 and 14 TW1 now Serial1 on pins 18 and 19 due to improved wiring access
 Ch376msc flashDrive(Serial1, 115200);
 
 int32_t Current = 100;  // Current in %
