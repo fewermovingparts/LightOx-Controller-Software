@@ -503,8 +503,8 @@ void homeScreen() {
 
     const uint8_t kOptionsButtonTag = 13;
     const int16_t kOptionsButtonMargin = 20;
-    drawTaggedButton(kOptionsButtonTag, FT_DISPLAYWIDTH - kOptionsButtonMargin - 20, kOptionsButtonMargin, 20, 20,
-                     "O", selectedTag);
+    drawTaggedButton(kOptionsButtonTag, FT_DISPLAYWIDTH - kOptionsButtonMargin - 80, kOptionsButtonMargin, 80, 20,
+                     "Settings", selectedTag);
     FTImpl.DLEnd();
 
     uint8_t buttonPressTag = kpt.waitForChange(selectedTag);
