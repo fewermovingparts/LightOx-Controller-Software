@@ -1285,7 +1285,7 @@ void savedExperimentScreen() {
             currentExp.time % 60);
     FTImpl.Cmd_Text(kRightColumnX, 60, kFont, 0, labelBuffer);
     FTImpl.Cmd_Text(kLeftColumnX, 60 + kSpacing, kFont, 0, "Irradiance:");
-    sprintf(labelBuffer, "%s^2", sprintEnergyDensity(currentExp.irradience));
+    sprintf(labelBuffer, "%s^2", sprintIrradiance(currentExp.irradience));
     FTImpl.Cmd_Text(kRightColumnX, 60 + kSpacing, kFont, 0, labelBuffer);
     FTImpl.Cmd_Text(kLeftColumnX, 60 + 2 * kSpacing, kFont, 0,
                     "Energy Density:");
